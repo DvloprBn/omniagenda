@@ -34,5 +34,13 @@ copiado aquí.
 
 ## Estado
 
-**Documentación v0.1 — fase de estrategia. Nada codificado todavía.**
-Ver [`ESTADO_PROYECTO.md`](./ESTADO_PROYECTO.md) §4 para el próximo paso real.
+**Fases 0 y 1 completas (2026-09-10).**
+
+- **Fase 0 — infraestructura:** `docker compose up` levanta 4 servicios (PostgreSQL 18, Redis 8,
+  backend NestJS 11, frontend Next.js 16) y el `/health` real confirma que se comunican.
+- **Fase 1 — `omniagenda_core`:** paquete `@omniagenda/core` con la lógica pura de tiempo,
+  recurrencia (RFC 5545), disponibilidad y conflicto. **57 pruebas** (`node:test` + `tsx`,
+  ~185 ms), sin base de datos.
+
+**Siguiente: Fase 2** — schema de Prisma + la migración a mano con el `EXCLUDE USING gist`.
+Ver [`ESTADO_PROYECTO.md`](./ESTADO_PROYECTO.md) §4.

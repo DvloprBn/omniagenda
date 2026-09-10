@@ -297,8 +297,18 @@ ya hace bien con `employee_assignments`, elevado a producto. Ver
 del núcleo dentro de cada proyecto que lo use, se publica con número de versión y cada proyecto
 declara cuál usa. Es el mismo principio que ya te obligó a sacar el Bridge a una ruta externa
 —una sola fuente, nunca copias que divergen— aplicado al código en lugar de a la documentación.
-El mecanismo concreto (registro privado, `npm link`, o *workspaces*) se decide en la Fase 1, cuando
-el núcleo exista; no se monta infraestructura de publicación antes de tener qué publicar.
+
+**Mecanismo concreto, resuelto en la Fase 1 (2026-09-10):**
+
+- El núcleo es el paquete `@omniagenda/core`, con `version`, `exports`, `types` y `files` ya
+  declarados en su `package.json` — listo para `npm publish` el día que haga falta.
+- **Dentro de este repo:** cuando el backend lo necesite (Fase 2), lo consume como **dependencia
+  local** apuntando a `omniagenda_core`, y su `Dockerfile` copia `omniagenda_core/dist` al
+  contexto de build. En Fase 0/1 el backend **no** lo importa todavía.
+- **Publicar a un registro real (privado):** solo cuando exista un **segundo consumidor** (otro
+  proyecto). No se monta infraestructura de publicación para un solo usuario.
+- **Pruebas del núcleo:** `node:test` nativo + `tsx`. Cero framework de testing — la elección más
+  coherente con "TypeScript puro, sin dependencias de infraestructura".
 
 ---
 
@@ -330,7 +340,7 @@ Cada fase se **verifica de verdad** antes de la siguiente — nunca "arrancó si
 | # | Fase | Entregable | Cómo se verifica |
 |---|---|---|---|
 | **0** ✅ | Infraestructura y documentación | Docker Compose completo, esta documentación, `.env.example` | `docker compose up` real, los 4 servicios sanos — **hecho y verificado 2026-09-10**, ver `ESTADO_PROYECTO.md` §1 |
-| **1** | `omniagenda_core` | Álgebra de intervalos, `RRULE`, disponibilidad, conflicto. **Sin base de datos** | Pruebas unitarias reales, casos borde de traslape y recurrencia |
+| **1** ✅ | `omniagenda_core` | Álgebra de intervalos, `RRULE`, disponibilidad, conflicto. **Sin base de datos** | **hecho 2026-09-10** — 57 pruebas `node:test` en ~185 ms, `tsc` limpio, riesgo #1 cerrado. Ver `ESTADO_PROYECTO.md` §1 |
 | **2** | Persistencia + la garantía real | Schema Prisma, migración con el `EXCLUDE` escrito a mano, `btree_gist` | Intento real de doble-reserva rechazado por PostgreSQL + prueba que compara migración contra constante |
 | **3** | Identidad y permisos | Auth portada de OmniUser + permisos por calendario, `APP_GUARD` fail-closed | Barrido real de rutas sin autenticación, clasificado por código de respuesta |
 | **4** | API de agenda | Reservar, mover, cancelar, multi-recurso, conflicto duro/blando, turnos, tareas | Pruebas de integración contra PostgreSQL real, nunca mocks de Prisma |
@@ -388,6 +398,7 @@ física, cambio de mes sin salto. **Lenguaje visual:** se construye desde el mat
 | 2026-09-10 | ✅ **Asclepios queda fuera de consideración** | No es proyecto web, estructura muy distinta, estrategia aún cambiante. Ninguna decisión de aquí lo toma en cuenta |
 | 2026-09-10 | ✅ Animación: CSS puro, componentes 100% propios, referencias solo como vara | Ver §9 |
 | 2026-09-10 | ✅ **Fase 0 construida y verificada** — stack de 4 servicios levantado de verdad, `/health` toca Postgres y Redis, frontend en verde | El dueño dio luz verde explícita tras entender la estrategia. Detalle en `ESTADO_PROYECTO.md` |
+| 2026-09-10 | ✅ **Fase 1 construida y verificada** — `omniagenda_core` con 57 pruebas verdes (tiempo, zona horaria, RRULE, disponibilidad, conflicto). Riesgo #1 (horizonte de materialización) cerrado en diseño con una constante única | TypeScript puro, `node:test` + `tsx`, sin framework. Distribución §6.3 resuelta. Commits locales; el dueño creará el repo público |
 | 2026-09-10 | 🟡 **Punto de venta**: posible paquete complementario, no alcance de v1 | El dueño lo planteó como "quizá". Espiral ya tiene un POS real que serviría de base |
 
 ---

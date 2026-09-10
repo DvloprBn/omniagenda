@@ -19,13 +19,33 @@
 - Qué hace realmente un build multi-etapa de Docker y por qué el contenedor final es más pequeño.
 - Por qué PostgreSQL y Redis **nunca** publican puerto a la red, ni en desarrollo.
 
-### Fase 1 — El núcleo
-- **Álgebra de intervalos**: qué significa exactamente que dos rangos se traslapen, y por qué
-  `inicio < otroFin && fin > otroInicio` es la condición correcta (y `<=` es un error clásico que
-  hace imposible agendar dos citas seguidas).
-- **RFC 5545 / `RRULE`**: cómo se guarda "todos los martes salvo el 24 de diciembre" en una línea.
-- **Ocurrencia virtual vs. materializada** y por qué no se guardan mil filas por adelantado.
-- Por qué un módulo sin dependencias se prueba en milisegundos y uno acoplado al ORM, no.
+### Fase 1 — El núcleo  ✅ construido 2026-09-10
+
+Los conceptos ya tienen código real que leer. Pendiente: sesión de repaso guiado con el dueño
+sobre estos cuatro archivos.
+
+- **Álgebra de intervalos** — `omniagenda_core/src/time/interval.ts`. Un rango es semiabierto
+  `[start, end)`; `overlaps` usa `a.start < b.end && b.start < a.end` (con `<`, nunca `<=`), que
+  es lo que deja agendar `[09:00,10:00)` y `[10:00,11:00)` seguidas sin que "choquen". Ver la
+  prueba `overlaps: adyacentes NO se traslapan`.
+- **Operaciones de conjuntos de intervalos** — `omniagenda_core/src/time/interval-set.ts`.
+  `subtract` es la pieza clave: un "hueco" en medio parte un intervalo en dos. Toda la
+  disponibilidad se calcula restando conjuntos.
+- **Zona horaria sin librería** — `omniagenda_core/src/time/zoned.ts`. Cómo `Intl.DateTimeFormat`
+  con `timeZone` + `formatToParts` convierte entre "hora de pared" e "instante", y por qué el
+  método de "suponer UTC, medir el offset real, corregir" resuelve el caso normal (y qué pasa
+  exactamente en la transición de horario de verano).
+- **RFC 5545 / `RRULE`** — `omniagenda_core/src/recurrence/rrule.ts`. "Todos los martes salvo el
+  24 de diciembre" = una regla (`FREQ`, `BYDAY`, `EXDATE`), no mil filas. Por qué la recurrencia
+  avanza en *reloj de pared* y no en saltos de 24 h (una prueba lo verifica cruzando un cambio
+  de horario).
+- **Ocurrencia virtual vs. materializada + el horizonte** — `omniagenda_core/src/recurrence/horizon.ts`.
+  Por qué el `EXCLUDE` de Postgres (Fase 2) no puede ver lo que no es una fila real, y la
+  compensación de elegir 90 días.
+- **Conflicto duro vs. blando** — `omniagenda_core/src/conflict/conflict.ts`. Qué rechaza la base
+  y qué solo se avisa; el colchón de traslado; no chocar consigo misma al reprogramar.
+- Por qué un módulo sin dependencias se prueba en milisegundos (57 pruebas, ~185 ms) y uno
+  acoplado al ORM, no.
 
 ### Fase 2 — La base de datos como garantía
 - **`EXCLUDE USING gist` y `tstzrange`**: cómo PostgreSQL impide un traslape que la aplicación

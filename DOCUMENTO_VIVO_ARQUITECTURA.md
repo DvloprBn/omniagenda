@@ -90,7 +90,9 @@ En OmniAgenda:
 
 ## §4. Recurrencia: RFC 5545 real, con ocurrencias virtuales
 
-**Decidido: 2026-09-10 · Estado: diseño, sin implementar.**
+**Decidido: 2026-09-10 · Estado: `expandRecurrence` implementado y probado en Fase 1
+(`omniagenda_core/src/recurrence/rrule.ts`, 15 pruebas). El horizonte de materialización se
+implementó como constante única — ver §8, riesgo #1, ahora CERRADO en cuanto al diseño.**
 
 Espiral resolvió recurrencia solo para gastos (`recurring_expenses`) y **documentó explícitamente
 que un `RRULE` completo sería sobreingeniería ahí**. Es cierto para gastos; es insuficiente para
@@ -107,17 +109,24 @@ El modelo:
 - La identidad de una ocurrencia virtual es `(regla, fecha)`, exactamente el `occurrenceKey` que
   ya existe en `week-calendar.tsx` de Espiral.
 
-**Decisión abierta hasta la Fase 1:** el `EXCLUDE` **no puede ver ocurrencias virtuales** — la
-base solo conoce filas reales. Un bloque recurrente que debe bloquear tiene que materializarse
-dentro de un horizonte (por ejemplo, los próximos 90 días) por un cron. Ese horizonte es un
-número que hay que elegir con cuidado y medir; queda registrado como riesgo conocido, no
-resuelto.
+**Cerrado en Fase 1 (2026-09-10):** el `EXCLUDE` no puede ver ocurrencias virtuales, así que un
+bloque recurrente que debe bloquear se materializa dentro de un horizonte finito por un cron. El
+horizonte vive en **una sola constante** (`recurrence/horizon.ts` →
+`MATERIALIZATION_HORIZON_DAYS = 90`) con el razonamiento de la compensación escrito ahí mismo,
+para que el cron, el cálculo de disponibilidad y las pruebas lean el mismo número. **Se revisa
+con medición real en la Fase 2**, sobre datos sembrados — no antes. Mientras tanto, el
+pre-chequeo de la aplicación (`evaluateConflict`) **sí** considera las ocurrencias virtuales que
+el llamador le pase, así que el hueco entre "más allá del horizonte" y "protegido de verdad" lo
+cubre la capa de aplicación, no queda descubierto.
 
 ---
 
 ## §5. Zona horaria como dato del calendario
 
-**Decidido: 2026-09-10 · Estado: diseño, sin implementar.**
+**Decidido: 2026-09-10 · Estado: el puente puro está implementado y probado en Fase 1
+(`omniagenda_core/src/time/zoned.ts`, 9 pruebas — round-trip en zona sin DST, en UTC, y en una
+zona con DST incluido el hueco de "adelantar el reloj"). La parte de schema (`calendars.timezone`,
+`timestamptz` vs `date`) sigue pendiente para la Fase 2.**
 
 Hoy `America/Mexico_City` está incrustado como constante en al menos dos archivos reales
 (`espiral/.../week-calendar.tsx` y `delyDoggy/src/lib/mexico-calendar.ts`). Funciona porque ambos
@@ -137,19 +146,66 @@ Reglas:
 
 ## §6. El núcleo puro y por qué no importa Prisma
 
-**Decidido: 2026-09-10 · Estado: diseño, sin implementar.**
+**Decidido: 2026-09-10 · Estado: implementado y probado — Fase 1.**
 
 `omniagenda_core` no importa Prisma, ni Nest, ni React. Recibe datos ya cargados y devuelve
 decisiones. Tres razones concretas:
 
 1. **Es lo único que se replica.** Un núcleo que importa Prisma solo corre donde corre Prisma.
-2. **Se prueba sin base de datos.** Decenas de casos borde de traslape, colchones y recurrencia
-   en milisegundos, sin contenedor.
+2. **Se prueba sin base de datos.** 57 pruebas de casos borde de traslape, colchones, recurrencia
+   y zona horaria corren en **~185 ms**, sin contenedor (`node --import tsx --test`).
 3. **La puerta queda abierta gratis.** El dueño decidió *solo PostgreSQL/web*, y así se construye
    — pero no importar el ORM no cuesta trabajo extra y evita cerrar una puerta sin necesidad.
 
 Lo que **sí** vive en el backend y no en el núcleo: el `EXCLUDE`, las transacciones, los permisos,
 el cron, el correo y Stripe.
+
+### Estructura real construida en Fase 1
+
+```
+omniagenda_core/src/
+├── time/
+│   ├── interval.ts        rango semiabierto [start,end) en ms epoch;
+│   │                      overlaps / contains / intersection / gapMs / expand
+│   ├── interval-set.ts    normalize · union · subtract · intersect ·
+│   │                      freeWithin · expandEach · dropShorterThan
+│   └── zoned.ts           puente hora-de-pared <-> instante, zona IANA
+│                          explícita, vía Intl (sin librería). Salvedad DST
+│                          documentada; verticales de referencia sin DST.
+├── recurrence/
+│   ├── rrule.ts           expandRecurrence(regla, ventana) — subconjunto
+│   │                      RFC 5545: FREQ DAILY/WEEKLY/MONTHLY, INTERVAL,
+│   │                      BYDAY, BYMONTHDAY (recorte a fin de mes), COUNT,
+│   │                      UNTIL, EXDATE. Avanza en reloj de pared, no en
+│   │                      saltos fijos de 24 h. Tope de 20 000 iteraciones.
+│   └── horizon.ts         MATERIALIZATION_HORIZON_DAYS = 90 (cierra riesgo #1)
+├── conflict/
+│   ├── status.ts          NON_BLOCKING_STATUSES = ['cancelada','rechazada',
+│   │                      'expirada'] — la constante única (§3 del PLAN)
+│   └── conflict.ts        evaluateConflict — duro vs blando, multi-recurso,
+│                          colchón, ignoreBookingId para reprogramar
+└── availability/
+    ├── weekly-hours.ts    expandWeeklyHours — patrón semanal JSON estilo
+    │                      artist_locations.weekly_hours de Espiral
+    └── availability.ts    computeAvailability = apertura − ausencias −
+                           (ocupado + colchón) → filtrar cortos
+```
+
+### Decisión de distribución (§6.3 del PLAN), tomada en Fase 1
+
+**Paquete `@omniagenda/core`, versionado (`0.1.0`), con `dist/` compilado por `tsc`.**
+
+- **Dentro de este repo**, cuando el backend lo necesite (Fase 2), lo consume como dependencia
+  local (`file:` / workspace) apuntando a `omniagenda_core` — el build de Docker del backend
+  copiará `omniagenda_core/dist` a su contexto. Todavía no se cablea nada: el backend de Fase 0
+  no importa el núcleo.
+- **Publicar a un registro real** (privado) se hace cuando exista el **primer consumidor externo**
+  — otro proyecto. No se monta infraestructura de publicación para un solo usuario, tal como dice
+  el PLAN. El `package.json` ya declara `name`, `version`, `exports`, `types` y `files` para que
+  ese paso sea trivial cuando toque.
+- **Runner de pruebas: `node:test` nativo + `tsx`**, cero framework. Es la elección más coherente
+  con el mandato "TypeScript puro, sin dependencias de infraestructura" — no hay ni Jest ni
+  Vitest, solo Node y un cargador de TS.
 
 ---
 
@@ -171,8 +227,10 @@ desincronizar en silencio.
 
 | # | Riesgo | Por qué importa | Estado |
 |---|---|---|---|
-| 1 | Horizonte de materialización de series recurrentes (§4) | El `EXCLUDE` no ve ocurrencias virtuales | Abierto — se define y mide en Fase 1/2 |
-| 2 | Costo de expandir `RRULE` en calendarios grandes | Una vista de mes con muchas series puede volverse cara | Abierto — se mide, no se supone |
+| 1 | Horizonte de materialización de series recurrentes (§4) | El `EXCLUDE` no ve ocurrencias virtuales | **Cerrado en diseño (Fase 1)** — constante única `MATERIALIZATION_HORIZON_DAYS=90` en `recurrence/horizon.ts`; se **mide y ajusta** en Fase 2 con datos sembrados. `evaluateConflict` ya cubre el hueco en la capa de aplicación |
+| 2 | Costo de expandir `RRULE` en calendarios grandes | Una vista de mes con muchas series puede volverse cara | Abierto — `expandRecurrence` ya exige ventana acotada y tiene tope de 20 000 iteraciones; falta medir con muchas series reales (Fase 2/5) |
 | 3 | Arrastrar y soltar contra conflicto duro | La animación tiene que poder "rebotar" limpio cuando la base rechaza | Abierto — Fase 5 |
 | 4 | Cuentas de Stripe/Resend compartidas del portafolio | Una llave filtrada compromete a todos los hermanos | Mitigado por diseño: solo claves de prueba, secretos fuera de git |
 | 5 | Cuatro dominios en v1 | Es el alcance más amplio de cualquier proyecto tuyo hasta hoy | Aceptado por el dueño; se ordena por fases (`PLAN_DESARROLLO.md` §5) |
+| 6 | Rangos que cruzan medianoche (un bar que cierra a las 02:00) | `expandWeeklyHours` los rechaza hoy con error | Abierto a propósito — Espiral tampoco los soporta; se agrega cuando un caso real lo pida |
+| 7 | Ambigüedad DST en `instantFromWall` (hora que ocurre dos veces / que no existe) | Una zona con horario de verano podría resolver mal en la transición | Acotado y documentado en `zoned.ts`; los verticales de referencia (México) no usan DST desde 2022 |
