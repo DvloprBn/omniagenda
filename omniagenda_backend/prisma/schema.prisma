@@ -1,0 +1,28 @@
+// OmniAgenda — esquema de datos.
+//
+// FASE 0: solo el generador y el datasource. Todavia NO hay ningun modelo.
+// Las tablas del motor (`resources`, `calendars`, `schedule_rules`,
+// `time_off`, `bookings`, `booking_resources`) se agregan en la FASE 2,
+// junto con la migracion escrita a mano que crea el
+//   EXCLUDE USING gist (resource_id WITH =, tstzrange(...) WITH &&)
+// sobre `booking_resources` — la garantia real contra doble-reserva que el
+// DSL de Prisma no sabe expresar. Ver PLAN_DESARROLLO.md §8 y
+// DOCUMENTO_VIVO_ARQUITECTURA.md §1.
+//
+// Prisma 7 (generator "prisma-client"): el cliente se genera a una carpeta
+// propia (generated/prisma), NO a node_modules/@prisma/client —
+// PrismaService importa desde "../../generated/prisma/client".
+generator client {
+  provider      = "prisma-client"
+  output        = "../generated/prisma"
+  // Sin esto Prisma infiere el formato de tsconfig ("nodenext") y genera
+  // ESM puro (import.meta.url); este backend es CommonJS y rompe en runtime.
+  moduleFormat  = "cjs"
+  // node:24-alpine usa musl, no glibc — sin este target el engine no corre
+  // dentro del contenedor (falla en runtime, no en build).
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@omniagenda/core",
+  "version": "0.0.0",
+  "description": "Motor de agenda replicable — algebra de intervalos, RRULE, disponibilidad, reglas de conflicto. TypeScript puro: sin Nest, sin Prisma, sin React.",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"(Fase 1: aqui van las pruebas unitarias del nucleo)\" && exit 0"
+  }
+}

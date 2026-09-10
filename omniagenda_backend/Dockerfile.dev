@@ -1,0 +1,24 @@
+# Imagen de DESARROLLO — la usa docker-compose.yml, con hot-reload via
+# volumen montado. NO usar en produccion (instala devDependencies y corre
+# "npm run start:dev").
+FROM node:24-alpine
+
+# tini como PID 1: reenvia SIGTERM correctamente a Node y evita zombies.
+RUN apk add --no-cache tini
+
+WORKDIR /usr/src/app
+
+# Se instala como root ANTES de bajar de privilegios; el codigo se copia
+# con dueno "node". En dev, el volumen de docker-compose vuelve a montar
+# encima /usr/src/app y un volumen con nombre para node_modules.
+COPY package*.json ./
+RUN npm install
+
+COPY --chown=node:node . .
+
+USER node
+
+EXPOSE 3000 5555
+
+ENTRYPOINT ["tini", "--"]
+CMD ["npm", "run", "start:dev"]

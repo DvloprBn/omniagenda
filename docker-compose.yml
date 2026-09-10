@@ -1,0 +1,129 @@
+# OmniAgenda — entorno de DESARROLLO. 4 servicios: base de datos, cache,
+# backend y frontend. Levantalo con:  docker compose up --build
+#
+# Puertos (verificados el 2026-09-10 contra los 6 proyectos que ya corren
+# en este host — ver PLAN_DESARROLLO.md §7):
+#   Postgres  5439   Redis  6384   Backend  3060   Frontend  3061
+#   Prisma Studio  5523  (reservado, solo 127.0.0.1)
+#
+# Regla del checklist de seguridad, sin excepcion: Postgres y Redis NO
+# publican puerto a la red — solo a 127.0.0.1, para poder inspeccionarlos
+# desde este host con un cliente de escritorio y de ningun otro lado.
+services:
+  # ---------- SERVICIO 1: BASE DE DATOS ----------
+  omniagenda_db:
+    image: postgres:18-alpine # Misma version que Espiral / Dely Doggy / OmniUser — no se cambia sin confirmarlo.
+    container_name: omniagenda_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "127.0.0.1:5439:5432" # Solo localhost.
+    volumes:
+      - omniagenda_db_data:/var/lib/postgresql # Postgres 18+ monta aqui, ya no en /var/lib/postgresql/data.
+    networks:
+      - omniagenda_network
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ---------- SERVICIO 2: CACHE Y RATE LIMITING ----------
+  omniagenda_redis:
+    image: redis:8-alpine # Licencia open source (AGPLv3) desde la v8 — mismo criterio que los hermanos.
+    container_name: omniagenda_redis
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    ports:
+      - "127.0.0.1:6384:6379" # Solo localhost.
+    volumes:
+      - omniagenda_redis_data:/data
+    networks:
+      - omniagenda_network
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ---------- SERVICIO 3: BACKEND ----------
+  omniagenda_backend:
+    build:
+      context: ./omniagenda_backend
+      dockerfile: Dockerfile.dev
+    container_name: omniagenda_backend
+    restart: unless-stopped
+    env_file:
+      - .env # inyecta DATABASE_URL, POSTGRES_*, REDIS_PASSWORD al contenedor.
+    ports:
+      - "127.0.0.1:3060:3000" # API REST.
+      - "127.0.0.1:5523:5555" # Prisma Studio: SOLO localhost, nunca a la red.
+    environment:
+      NODE_ENV: development
+      # El navegador del usuario habla al backend por el puerto del HOST;
+      # los Server Components de Next lo hacen por la red interna de Docker.
+      ALLOWED_ORIGINS: "http://localhost:3061"
+      FRONTEND_URL: "http://localhost:3061"
+      REDIS_HOST: omniagenda_redis
+      REDIS_PORT: 6379
+    depends_on:
+      omniagenda_db:
+        condition: service_healthy
+      omniagenda_redis:
+        condition: service_healthy
+    volumes:
+      - ./omniagenda_backend:/usr/src/app
+      - omniagenda_node_modules:/usr/src/app/node_modules
+    networks:
+      - omniagenda_network
+    security_opt:
+      - no-new-privileges:true
+    # Fase 0: generar el cliente de Prisma (esta gitignoreado, no existe en
+    # un clon limpio) y aplicar migraciones (todavia no hay ninguna: es un
+    # no-op que sale con codigo 0). El `db seed` se agrega en la Fase 2,
+    # cuando exista un schema con modelos. Mismo patron encadenado ya
+    # probado en Espiral / Dely Doggy / OmniUser.
+    command: /bin/sh -c "npx prisma generate && npx prisma migrate deploy && npm run start:dev"
+
+  # ---------- SERVICIO 4: FRONTEND ----------
+  omniagenda_frontend:
+    build:
+      context: ./omniagenda_frontend
+      dockerfile: Dockerfile.dev
+    container_name: omniagenda_frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3061:3000"
+    environment:
+      NODE_ENV: development
+      # localhost:3060 solo existe FUERA de Docker (para el navegador).
+      NEXT_PUBLIC_API_URL: "http://localhost:3060"
+      # Server Components / Actions corren DENTRO de este contenedor y le
+      # hablan al backend por el nombre del servicio en la red interna.
+      INTERNAL_API_URL: "http://omniagenda_backend:3000"
+    volumes:
+      - ./omniagenda_frontend:/app
+      - /app/node_modules
+    networks:
+      - omniagenda_network
+    depends_on:
+      - omniagenda_backend
+    security_opt:
+      - no-new-privileges:true
+    command: npm run dev
+
+networks:
+  omniagenda_network:
+
+volumes:
+  omniagenda_db_data:
+  omniagenda_redis_data:
+  omniagenda_node_modules:
