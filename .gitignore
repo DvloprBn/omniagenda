@@ -1,0 +1,30 @@
+# Secretos y entorno — NUNCA a git.
+.env
+.env.local
+.env.*.local
+
+# Dependencias — sin "/" inicial a propósito: es un monorepo con
+# core/backend/frontend en subcarpetas, y node_modules vive dentro de cada
+# una, no solo en la raíz.
+node_modules
+
+# Builds
+dist
+build
+.next
+out
+
+# Cliente de Prisma generado (generator "prisma-client") — se regenera, no se versiona.
+generated
+
+# Documentación autogenerada (Compodoc, fase posterior) — se regenera del código.
+documentation
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / SO
+.DS_Store
+.vscode/
+.idea/
