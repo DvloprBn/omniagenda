@@ -4,7 +4,8 @@
 > [`ESTADO_PROYECTO.md`](./ESTADO_PROYECTO.md); el detalle técnico de cada decisión, en
 > [`DOCUMENTO_VIVO_ARQUITECTURA.md`](./DOCUMENTO_VIVO_ARQUITECTURA.md).
 >
-> **v0.1 — 2026-09-10. Fase de estrategia: nada codificado todavía.**
+> **v0.2 — 2026-09-10.** Estrategia cerrada; Fases 0, 1 y 2 construidas y verificadas
+> (ver `ESTADO_PROYECTO.md`). En construcción: Fase 3 (identidad y permisos).
 
 ---
 
@@ -341,7 +342,7 @@ Cada fase se **verifica de verdad** antes de la siguiente — nunca "arrancó si
 |---|---|---|---|
 | **0** ✅ | Infraestructura y documentación | Docker Compose completo, esta documentación, `.env.example` | `docker compose up` real, los 4 servicios sanos — **hecho y verificado 2026-09-10**, ver `ESTADO_PROYECTO.md` §1 |
 | **1** ✅ | `omniagenda_core` | Álgebra de intervalos, `RRULE`, disponibilidad, conflicto. **Sin base de datos** | **hecho 2026-09-10** — 57 pruebas `node:test` en ~185 ms, `tsc` limpio, riesgo #1 cerrado. Ver `ESTADO_PROYECTO.md` §1 |
-| **2** | Persistencia + la garantía real | Schema Prisma, migración con el `EXCLUDE` escrito a mano, `btree_gist` | Intento real de doble-reserva rechazado por PostgreSQL + prueba que compara migración contra constante |
+| **2** ✅ | Persistencia + la garantía real | Schema Prisma, migración con el `EXCLUDE` escrito a mano, `btree_gist` | **hecho 2026-09-10** — 6 modelos, `EXCLUDE` + 3 `CHECK` aplicados; `double_booking.sql` 6/6 PASS contra Postgres en vivo; `status-sync.mjs` PASS. Ver `ESTADO_PROYECTO.md` §1 |
 | **3** | Identidad y permisos | Auth portada de OmniUser + permisos por calendario, `APP_GUARD` fail-closed | Barrido real de rutas sin autenticación, clasificado por código de respuesta |
 | **4** | API de agenda | Reservar, mover, cancelar, multi-recurso, conflicto duro/blando, turnos, tareas | Pruebas de integración contra PostgreSQL real, nunca mocks de Prisma |
 | **5** | Interfaz y animación | Las 5 vistas, arrastrar y soltar, lenguaje visual propio | Medición real de fotogramas, `prefers-reduced-motion`, teclado completo |
@@ -399,6 +400,7 @@ física, cambio de mes sin salto. **Lenguaje visual:** se construye desde el mat
 | 2026-09-10 | ✅ Animación: CSS puro, componentes 100% propios, referencias solo como vara | Ver §9 |
 | 2026-09-10 | ✅ **Fase 0 construida y verificada** — stack de 4 servicios levantado de verdad, `/health` toca Postgres y Redis, frontend en verde | El dueño dio luz verde explícita tras entender la estrategia. Detalle en `ESTADO_PROYECTO.md` |
 | 2026-09-10 | ✅ **Fase 1 construida y verificada** — `omniagenda_core` con 57 pruebas verdes (tiempo, zona horaria, RRULE, disponibilidad, conflicto). Riesgo #1 (horizonte de materialización) cerrado en diseño con una constante única | TypeScript puro, `node:test` + `tsx`, sin framework. Distribución §6.3 resuelta. Commits locales; el dueño creará el repo público |
+| 2026-09-10 | ✅ **Fase 2 construida y verificada** — 6 modelos + migración con `EXCLUDE USING gist` y 3 `CHECK` escritos a mano; doble-reserva rechazada por PostgreSQL en vivo (6/6); `status-sync.mjs` confirma que la migración y `@omniagenda/core` dicen lo mismo | El cableado backend↔`@omniagenda/core` se movió a la Fase 4 (donde se usa de verdad). Seed con datos ficticios (repo público) |
 | 2026-09-10 | 🟡 **Punto de venta**: posible paquete complementario, no alcance de v1 | El dueño lo planteó como "quizá". Espiral ya tiene un POS real que serviría de base |
 
 ---

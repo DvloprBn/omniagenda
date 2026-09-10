@@ -1,17 +1,18 @@
 // OmniAgenda — esquema de datos.
 //
-// FASE 0: solo el generador y el datasource. Todavia NO hay ningun modelo.
-// Las tablas del motor (`resources`, `calendars`, `schedule_rules`,
-// `time_off`, `bookings`, `booking_resources`) se agregan en la FASE 2,
-// junto con la migracion escrita a mano que crea el
-//   EXCLUDE USING gist (resource_id WITH =, tstzrange(...) WITH &&)
-// sobre `booking_resources` — la garantia real contra doble-reserva que el
-// DSL de Prisma no sabe expresar. Ver PLAN_DESARROLLO.md §8 y
+// FASE 2: los 6 modelos del motor. Todos son CIEGOS AL NEGOCIO — no saben
+// si un `resource` es un tatuador, una mesa o un horno. El negocio
+// anfitrion guarda sus propios atributos en SUS tablas, referenciando los
+// ids de aqui (ver CONTRATO_DE_INTEGRACION.md).
+//
+// La garantia real contra doble-reserva vive en `booking_resources` como
+// una restriccion `EXCLUDE USING gist` que el DSL de Prisma NO sabe
+// expresar — se agrega a mano en la migracion. Ver
 // DOCUMENTO_VIVO_ARQUITECTURA.md §1.
 //
 // Prisma 7 (generator "prisma-client"): el cliente se genera a una carpeta
-// propia (generated/prisma), NO a node_modules/@prisma/client —
-// PrismaService importa desde "../../generated/prisma/client".
+// propia (generated/prisma) — PrismaService importa desde
+// "../../generated/prisma/client".
 generator client {
   provider      = "prisma-client"
   output        = "../generated/prisma"
@@ -19,10 +20,173 @@ generator client {
   // ESM puro (import.meta.url); este backend es CommonJS y rompe en runtime.
   moduleFormat  = "cjs"
   // node:24-alpine usa musl, no glibc — sin este target el engine no corre
-  // dentro del contenedor (falla en runtime, no en build).
+  // dentro del contenedor.
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+/// Cualquier cosa agendable: una persona, una sala, un equipo, un
+/// vehiculo. OmniAgenda NO interpreta `kind` — es texto libre validado en
+/// la aplicacion (mismo criterio que las categorias de texto libre de
+/// Espiral). Los atributos propios del negocio (% de deposito, capacidad
+/// de la mesa, catalogo de servicios) viven en las tablas del anfitrion,
+/// nunca aqui.
+model resources {
+  resource_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @db.VarChar(150)
+  /// person | room | equipment | vehicle | other (validado en el DTO).
+  kind        String   @default("person") @db.VarChar(30)
+  active      Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  schedule_rules    schedule_rules[]
+  time_off          time_off[]
+  booking_resources booking_resources[]
+
+  @@index([active])
+}
+
+/// Un tablero: "Mesas de la terraza", "Agenda de Ana", "Turnos de cocina".
+/// La ZONA HORARIA vive aqui, nunca como default oculto — es lo que
+/// consume omniagenda_core para toda su aritmetica de reloj de pared
+/// (DOCUMENTO_VIVO_ARQUITECTURA.md §5).
+model calendars {
+  calendar_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @db.VarChar(150)
+  /// Nombre IANA, ej. "America/Mexico_City". Validado en la app contra Intl.
+  timezone    String   @db.VarChar(64)
+  /// private | busy_only | public — cuanto de la agenda ve un visitante no
+  /// autenticado. La disponibilidad es un dato personal (PLAN §4.1).
+  visibility  String   @default("private") @db.VarChar(20)
+  active      Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  schedule_rules schedule_rules[]
+  time_off       time_off[]
+  bookings       bookings[]
+
+  @@index([active])
+}
+
+/// El patron de disponibilidad de un (recurso, calendario): el horario
+/// semanal recurrente + opcionalmente una regla de recurrencia. Un solo
+/// renglon por par (mismo criterio que `artist_locations` de Espiral).
+///
+/// `weekly_hours` (Json): forma
+///   {"mon":{"open":"09:00","close":"14:00"},"tue":null, ... ,"sun":null}
+/// — un dia ausente o null = cerrado. Validado en el DTO, no en la base.
+///
+/// `recurrence` (Json, opcional): la forma `RecurrenceRule` de
+/// omniagenda_core, para patrones que el semanal no expresa ("cada 2
+/// martes").
+model schedule_rules {
+  schedule_rule_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  resource_id      String   @db.Uuid
+  calendar_id      String   @db.Uuid
+  weekly_hours     Json
+  recurrence       Json?
+  active           Boolean  @default(true)
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  resources resources @relation(fields: [resource_id], references: [resource_id], onDelete: Cascade, onUpdate: NoAction)
+  calendars calendars @relation(fields: [calendar_id], references: [calendar_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([resource_id, calendar_id])
+  @@index([calendar_id])
+}
+
+/// Excepcion puntual sobre el patron: vacaciones, dia festivo,
+/// mantenimiento. Rango de DIAS completos, inclusivo en ambos extremos
+/// (como `artist_time_off` de Espiral — "se va 15 dias"). El
+/// CHECK (start_date <= end_date) se agrega A MANO en la migracion.
+/// `calendar_id` nullable: la ausencia puede ser del recurso en TODOS sus
+/// calendarios (null) o solo en uno.
+model time_off {
+  time_off_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  resource_id String   @db.Uuid
+  calendar_id String?  @db.Uuid
+  start_date  DateTime @db.Date
+  end_date    DateTime @db.Date
+  reason      String?  @db.VarChar(200)
+  /// Quien lo creo. VARCHAR sin FK a `users` a proposito (mismo criterio
+  /// que las bitacoras de Espiral): una cuenta borrada no debe romper el
+  /// registro historico.
+  created_by  String   @db.VarChar(64)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  resources resources  @relation(fields: [resource_id], references: [resource_id], onDelete: Cascade, onUpdate: NoAction)
+  calendars calendars? @relation(fields: [calendar_id], references: [calendar_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([resource_id, start_date, end_date])
+}
+
+/// El bloque real: N recursos ocupados en 1 rango de tiempo.
+/// `starts_at`/`ends_at` son la FUENTE DE VERDAD del horario;
+/// `booking_resources` espeja esos valores por recurso porque el `EXCLUDE`
+/// no puede hacer join (DOCUMENTO_VIVO_ARQUITECTURA.md §1).
+///
+/// `source_type` / `source_id` son el puente al negocio anfitrion (una
+/// cita, una reserva de mesa, un turno de cocina) — OmniAgenda NUNCA los
+/// interpreta, solo los guarda y los devuelve.
+model bookings {
+  booking_id  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  calendar_id String   @db.Uuid
+  /// Texto libre opcional. Para un vertical medico esto podria ser un dato
+  /// sensible — es decision de la app anfitriona que poner aqui; el motor
+  /// no lo necesita (PLAN §4, datos sensibles separados del horario).
+  title       String?  @db.Text
+  /// pendiente | confirmada | cancelada | rechazada | expirada | completada | no_show
+  /// (validado en la app). Los 3 que NO ocupan calendario estan en
+  /// omniagenda_core/src/conflict/status.ts Y en el WHERE del EXCLUDE.
+  status      String   @default("pendiente") @db.VarChar(20)
+  source_type String?  @db.VarChar(40)
+  source_id   String?  @db.VarChar(64)
+  starts_at   DateTime @db.Timestamptz(6)
+  ends_at     DateTime @db.Timestamptz(6)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  calendars         calendars           @relation(fields: [calendar_id], references: [calendar_id], onDelete: Restrict, onUpdate: NoAction)
+  booking_resources booking_resources[]
+
+  @@index([calendar_id, starts_at])
+  @@index([source_type, source_id])
+}
+
+/// La tabla puente donde vive la GARANTIA real. Un renglon por (reserva,
+/// recurso). `start_time` / `end_time` / `status` / `blocking` son un
+/// ESPEJO desnormalizado de la reserva padre, mantenido por un unico
+/// servicio escritor (Fase 4) — el `EXCLUDE USING gist` no puede leer otra
+/// tabla, asi que necesita estas columnas aqui.
+///
+/// Restriccion real, agregada A MANO en la migracion:
+///   CREATE EXTENSION IF NOT EXISTS btree_gist;
+///   ALTER TABLE booking_resources ADD CONSTRAINT no_overlapping_resource_bookings
+///     EXCLUDE USING gist (resource_id WITH =, tstzrange(start_time, end_time) WITH &&)
+///     WHERE (blocking = true AND status NOT IN ('cancelada', 'rechazada', 'expirada'));
+/// El `WHERE` DEBE coincidir, caracter por caracter, con NON_BLOCKING_STATUSES
+/// de omniagenda_core — hay un script que lo verifica (prisma/checks/).
+model booking_resources {
+  booking_resource_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  booking_id          String   @db.Uuid
+  resource_id         String   @db.Uuid
+  start_time          DateTime @db.Timestamptz(6)
+  end_time            DateTime @db.Timestamptz(6)
+  status              String   @db.VarChar(20)
+  /// false = un bloque que se muestra y se detecta como conflicto BLANDO
+  /// pero NUNCA rechaza a otro (una tarea, un apartado tentativo). El
+  /// `WHERE` del EXCLUDE lleva `blocking = true` justo por esto.
+  blocking            Boolean  @default(true)
+
+  bookings  bookings  @relation(fields: [booking_id], references: [booking_id], onDelete: Cascade, onUpdate: NoAction)
+  resources resources @relation(fields: [resource_id], references: [resource_id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([booking_id])
+  @@index([resource_id, start_time])
 }

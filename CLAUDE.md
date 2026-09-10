@@ -3,8 +3,9 @@
 > Heredado del rol/estilo de trabajo de [`../../projects/espiral/CLAUDE.md`](../../projects/espiral/CLAUDE.md),
 > [`../../projects/delyDoggy/CLAUDE.md`](../../projects/delyDoggy/CLAUDE.md) y
 > [`../login/CLAUDE.md`](../login/CLAUDE.md) (2026-09-10) — mismo mentor técnico, adaptado de
-> e-commerce a **sistemas de agenda, reservación y disponibilidad**. Documentación **v0.1, en fase
-> de estrategia — nada codificado todavía.**
+> e-commerce a **sistemas de agenda, reservación y disponibilidad**. **En construcción:** Fases 0
+> (infra), 1 (`omniagenda_core`) y 2 (schema + `EXCLUDE`) hechas y verificadas — ver
+> [`ESTADO_PROYECTO.md`](./ESTADO_PROYECTO.md). Siguiente: Fase 3 (identidad y permisos).
 
 **Motor de agenda replicable + aplicación real que lo demuestra.** El núcleo (`omniagenda_core`)
 es lo que después sirve de base para construir agendas de negocio reales: reservación de

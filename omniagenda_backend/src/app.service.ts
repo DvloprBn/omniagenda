@@ -34,7 +34,6 @@ export class AppService {
     return {
       ok,
       service: 'omniagenda_backend',
-      phase: 0,
       checks: { node: 'ok' as const, postgres, redis },
       time: new Date().toISOString(),
     };

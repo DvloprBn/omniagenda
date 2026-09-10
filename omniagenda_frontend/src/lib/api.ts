@@ -8,7 +8,6 @@ const INTERNAL_API_URL = process.env.INTERNAL_API_URL ?? 'http://omniagenda_back
 export type Health = {
   ok: boolean;
   service: string;
-  phase: number;
   checks: { node: string; postgres: string; redis: string };
   time: string;
 };

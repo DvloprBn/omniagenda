@@ -11,26 +11,43 @@
 >
 > **Antes de repetir un error ya conocido:** [`../../DocumentacionProyecto/Bridge/`](../../DocumentacionProyecto/Bridge/).
 
-Última actualización: **2026-09-10** (Fase 1 completa — `omniagenda_core` con 57 pruebas)
+Última actualización: **2026-09-10** (Fase 2 completa — schema + `EXCLUDE` verificado en vivo)
 
 ---
 
 ## 1. Dónde estamos
 
-**Fases 0 y 1 completas y verificadas.** El stack de 4 servicios levanta y se comunica; el
-núcleo `omniagenda_core` tiene la lógica de tiempo/recurrencia/disponibilidad/conflicto escrita
-y probada (57 pruebas, ~185 ms, sin base de datos).
+**Fases 0, 1 y 2 completas y verificadas.** El stack de 4 servicios levanta y se comunica; el
+núcleo `omniagenda_core` tiene la lógica pura probada (57 pruebas); y la base de datos ya tiene
+los 6 modelos del motor con la **garantía real contra doble-reserva** (`EXCLUDE USING gist`)
+aplicada y comprobada contra PostgreSQL en vivo.
 
 Estructura real en disco:
 
 | Carpeta / archivo | Estado |
 |---|---|
-| `docker-compose.yml` | ✅ 4 servicios (db 5439 · redis 6384 · backend 3060 · frontend 3061), Postgres/Redis solo `127.0.0.1`, `security_opt: no-new-privileges`, healthchecks reales |
-| `.env.example` / `.env` | ✅ `.env` local generado con contraseñas de prueba (gitignored) |
-| `omniagenda_core/` | ✅ **Fase 1** — paquete `@omniagenda/core` 0.1.0. `src/time/` (interval, interval-set, zoned), `src/recurrence/` (rrule, horizon), `src/conflict/` (status, conflict), `src/availability/` (weekly-hours, availability). 57 pruebas `node:test` + `tsx`, `tsc --noEmit` limpio, `dist/` compila |
-| `omniagenda_backend/` | ✅ NestJS 11 + Prisma 7 + `ioredis`, `Dockerfile.dev` (node 24, tini, usuario `node`), `main.ts` (helmet + CORS + ValidationPipe), `PrismaService` / `RedisService`, `schema.prisma` **sin modelos todavía** (Fase 2). **No importa `omniagenda_core` aún** — se cablea en Fase 2 |
-| `omniagenda_frontend/` | ✅ Next.js 16.3.1 + React 19.2.4 + Tailwind 4, `next.config.ts` con cabeceras de seguridad, página de estado que consulta `/health` por la red interna |
-| Documentación | ✅ `DOCUMENTO_VIVO_ARQUITECTURA.md` §4/§5/§6/§8 actualizados con lo construido en Fase 1; riesgo #1 cerrado en diseño |
+| `docker-compose.yml` | ✅ 4 servicios (db 5439 · redis 6384 · backend 3060 · frontend 3061), Postgres/Redis solo `127.0.0.1`, `no-new-privileges`, healthchecks. `command` del backend: `prisma generate && migrate deploy && db seed && start:dev` |
+| `.env.example` / `.env` | ✅ `.env` local con contraseñas de prueba (gitignored) |
+| `omniagenda_core/` | ✅ **Fase 1** — paquete `@omniagenda/core` 0.1.0. `time/` · `recurrence/` · `conflict/` · `availability/`. 57 pruebas `node:test` + `tsx`, `tsc` limpio, `dist/` compila |
+| `omniagenda_backend/prisma/` | ✅ **Fase 2** — `schema.prisma` con 6 modelos; migración `20260910211526_init` con bloque SQL **a mano** (`btree_gist`, 3 `CHECK`, el `EXCLUDE`); `seed.ts` idempotente (datos de demo ficticios); `checks/double_booking.sql` + `checks/status-sync.mjs` |
+| `omniagenda_backend/src/` | ✅ NestJS 11, `main.ts` (helmet + CORS + ValidationPipe), `PrismaService`/`RedisService`, `/health` toca Postgres y Redis. **No importa `omniagenda_core` aún** — se cablea en Fase 4 (la API) |
+| `omniagenda_frontend/` | ✅ Next.js 16.3.1 + React 19.2.4 + Tailwind 4, cabeceras de seguridad, página de estado que consulta `/health` |
+
+**Modelo de datos (Fase 2):** `resources` (persona/sala/equipo/… — ciego al negocio) · `calendars`
+(con `timezone` IANA y `visibility`) · `schedule_rules` (horario semanal JSON + recurrencia
+opcional, uno por par recurso-calendario) · `time_off` (rango de días, `CHECK start<=end`) ·
+`bookings` (fuente de verdad del horario + `source_type`/`source_id`, el puente al anfitrión) ·
+`booking_resources` (el espejo por recurso donde vive el `EXCLUDE`).
+
+**Verificación Fase 2 (2026-09-10), reinicio limpio (`down -v` → `up`):**
+- `prisma generate` → `migrate deploy` (aplica `init`) → `db seed` → `nest start` con **0 errores**.
+- Semilla: 1 calendario, 3 recursos, 3 horarios, 1 reserva, 2 `booking_resources`.
+- `pg_constraint`: `no_overlapping_resource_bookings` (x) + 3 `CHECK` presentes; extensión
+  `btree_gist` instalada.
+- `checks/double_booking.sql` contra el Postgres en vivo → **6/6 PASS** (traslape rechazado,
+  adyacentes permitidas, `cancelada`/`blocking=false`/otro-recurso ignorados, `CHECK` de orden).
+- `checks/status-sync.mjs` → **PASS** (el `WHERE` de la migración == `NON_BLOCKING_STATUSES`).
+- `/health` `ok:true`, frontend `200`. `docker compose down` conserva volúmenes.
 
 **Verificación real (no "arrancó"), 2026-09-10:**
 - `docker compose config` válido.
@@ -83,32 +100,25 @@ ocurriendo esta vez en el código en lugar de en la documentación. Detalle comp
 
 ## 4. Próximo paso
 
-**Fase 2 — Persistencia + la garantía real.** El schema de Prisma con los 6 modelos del motor
-(`resources`, `calendars`, `schedule_rules`, `time_off`, `bookings`, `booking_resources`) y la
-**migración escrita a mano** que crea:
-
-```sql
-CREATE EXTENSION IF NOT EXISTS btree_gist;
-ALTER TABLE booking_resources ADD CONSTRAINT no_overlapping_resource_bookings
-  EXCLUDE USING gist (resource_id WITH =, tstzrange(start_time, end_time) WITH &&)
-  WHERE (blocking = true AND status NOT IN ('cancelada', 'rechazada', 'expirada'));
-```
-
-Verificación de Fase 2: un intento real de doble-reserva **rechazado por PostgreSQL**, más una
-prueba que lee el SQL de esa migración y comprueba que su `WHERE` coincide, carácter por
-carácter, con `NON_BLOCKING_STATUSES` de `omniagenda_core/src/conflict/status.ts`. También se
-cablea el backend para que consuma `@omniagenda/core` (dependencia local + copia de `dist/` al
-contexto de Docker) y se agrega `prisma db seed` al `command` del compose.
+**Fase 3 — Identidad y permisos.** Auth portada de OmniUser (jerarquía real de roles con
+`level`/`max_count`, 2FA TOTP, anti-enumeración) **más** permisos por calendario, y el modelo
+**fail-closed**: `APP_GUARD` de autenticación global + decorador `@Public()` explícito, desde
+ahora y no después (el checklist es claro: invertirlo con muchos módulos cuesta mucho más).
+Verificación: barrido real de rutas sin autenticación, clasificado por código de respuesta.
 
 **Cómo correr lo que ya existe:**
 ```
 cd /home/bn/DvloprBn/dvlopmnt/Planner
-# Núcleo (no necesita Docker — es TypeScript puro):
+# Núcleo (no necesita Docker — TypeScript puro):
 cd omniagenda_core && npm install && npm test && npm run typecheck && npm run build
-# Stack de infraestructura:
-cd .. && cp .env.example .env   # solo la 1ª vez; rellena las 2 contraseñas
-docker compose up -d --build    # frontend :3061 · health :3060/health
-docker compose down             # detener (los datos de Postgres persisten)
+# Stack + base de datos:
+cd .. && cp .env.example .env          # solo la 1ª vez; rellena las 2 contraseñas
+docker compose up -d --build           # migra + siembra solo; frontend :3061 · health :3060/health
+# Comprobaciones de la garantía (con el stack arriba):
+docker compose exec -T omniagenda_db psql -U omniagenda_user -d omniagenda_db \
+  -v ON_ERROR_STOP=1 -f - < omniagenda_backend/prisma/checks/double_booking.sql
+node omniagenda_backend/prisma/checks/status-sync.mjs
+docker compose down                    # detener (los datos de Postgres persisten)
 ```
 
 ---
@@ -125,6 +135,7 @@ demostración**, y lo hace hasta la Fase 5 (interfaz).
 
 | Fecha | Cambio |
 |---|---|
+| 2026-09-10 | **Fase 2 (Persistencia + la garantía real) — completa y verificada en vivo.** `schema.prisma` con los 6 modelos del motor, todos ciegos al negocio. Migración `20260910211526_init` generada con `prisma migrate dev --create-only` y luego **editada a mano** para añadir lo que el DSL de Prisma no expresa: `CREATE EXTENSION btree_gist`, `CHECK (starts_at < ends_at)` / `CHECK (start_time < end_time)` / `CHECK (start_date <= end_date)`, y la restricción central `no_overlapping_resource_bookings` — `EXCLUDE USING gist (resource_id WITH =, tstzrange(start_time, end_time) WITH &&) WHERE (blocking = true AND status NOT IN ('cancelada','rechazada','expirada'))`. `tstzrange` es `[)` por defecto → misma semántica semiabierta que `omniagenda_core`. `seed.ts` idempotente con datos de demo **ficticios** (el repo es público): 1 calendario "Estética", 3 recursos, 3 horarios, 1 reserva de ejemplo. `prisma db seed` añadido al `command` del compose; `seed` reactivado en `prisma.config.ts`. **Dos comprobaciones committeadas** en `omniagenda_backend/prisma/checks/`: `double_booking.sql` (6 casos contra Postgres en vivo, transacción con ROLLBACK) y `status-sync.mjs` (Node sin deps: falla si el `WHERE` de la migración y `NON_BLOCKING_STATUSES` dejan de coincidir — la prueba que faltó en Espiral). **Verificado con reinicio limpio** (`down -v` → `up`): cadena `generate→migrate→seed→nest` con 0 errores; `pg_constraint` confirma el `EXCLUDE` + 3 `CHECK`; 6/6 PASS en `double_booking.sql`; PASS en `status-sync.mjs`; `/health` ok, frontend 200. Se quitó el campo obsoleto `phase:0` de `/health`. **Movido a Fase 4** (decisión consciente): el cableado del backend para importar `@omniagenda/core` en runtime — se hace donde de verdad se usa (`evaluateConflict` en la API), no antes. |
 | 2026-09-10 | **Fase 1 (`omniagenda_core`) — completa, 57 pruebas verdes.** Paquete `@omniagenda/core` 0.1.0, TypeScript puro (sin Nest/Prisma/React). Módulos: `time/interval.ts` (rango semiabierto `[start,end)` en ms epoch — `overlaps` con `<`, no `<=`, para que dos citas seguidas no choquen), `time/interval-set.ts` (`normalize`/`subtract`/`intersect`/`freeWithin`/`expandEach`), `time/zoned.ts` (puente hora-de-pared ↔ instante con zona IANA vía `Intl`, sin librería; salvedad DST documentada, verticales de referencia sin DST), `recurrence/rrule.ts` (`expandRecurrence` — subconjunto RFC 5545: DAILY/WEEKLY/MONTHLY, INTERVAL, BYDAY, BYMONTHDAY con recorte a fin de mes, COUNT, UNTIL, EXDATE; avanza en reloj de pared, no en saltos fijos de 24 h; tope de 20 000 iteraciones), `recurrence/horizon.ts` (**cierra el riesgo #1**: `MATERIALIZATION_HORIZON_DAYS = 90` en una sola constante, con el razonamiento de la compensación escrito ahí), `conflict/status.ts` (`NON_BLOCKING_STATUSES = ['cancelada','rechazada','expirada']` — la constante única que la migración de Fase 2 tendrá que citar), `conflict/conflict.ts` (`evaluateConflict` — duro vs blando, multi-recurso, colchón de traslado, `ignoreBookingId` para reprogramar), `availability/weekly-hours.ts` + `availability/availability.ts` (patrón semanal JSON estilo `artist_locations.weekly_hours`; `apertura − ausencias − (ocupado+colchón) → filtrar cortos`). **Runner: `node:test` nativo + `tsx`**, cero framework (lo más coherente con "TS puro"). **Verificado**: `npm test` → 57/57 en ~185 ms; `tsc --noEmit` limpio; `npm run build` genera `dist/` sin los `.test`; smoke de `import('./dist/index.js')` → 31 exports. **Decisión §6.3 tomada**: paquete versionado, consumo local dentro del repo hasta que haya un consumidor externo; no se publica a registro todavía. `git init` local, sin remoto (el dueño creará el repo público). |
 | 2026-09-10 | **Fase 0 (Infraestructura) — completa y verificada en vivo.** `docker-compose.yml` con 4 servicios calcado del patrón probado de OmniUser: `postgres:18-alpine` + `redis:8-alpine` (ambos solo `127.0.0.1`, healthchecks reales, `no-new-privileges`), backend NestJS 11 / Prisma 7 / `ioredis` sobre `node:24-alpine` (tini como PID 1, usuario `node`), frontend Next.js 16.3.1 / React 19.2.4 / Tailwind 4. `main.ts` con helmet + CORS por `ALLOWED_ORIGINS` + `ValidationPipe` whitelist. `schema.prisma` **solo generador + datasource** (modelos y el `EXCLUDE` a mano → Fase 2). `RedisService` lee host/puerto del entorno en vez de incrustarlos (mismo principio que "la zona horaria es un dato"). `omniagenda_core` queda como esqueleto de paquete `@omniagenda/core`. Puertos: db 5439 · redis 6384 · api 3060 · front 3061 · studio 5523 (reservado). **Verificación real**: `compose config` válido → 4 contenedores arriba, db+redis `healthy` → `nest build` 0 errores → `GET /health` responde `ok:true` con `postgres:"ok"` y `redis:"ok"` (tocó ambos de verdad) → `GET /` del frontend `200` con las 4 filas de estado en `ok` (Server Component resolvió el fetch por la red interna) → logs sin errores propios. `docker compose down` conserva volúmenes. |
 | 2026-09-10 | **Documentación inicial v0.1 — 8 archivos.** Contexto levantado de Bridge + Espiral + Dely Doggy + OmniUser + gallery (código real, no solo documentación). Estrategia cerrada con 11 decisiones del dueño: nombre **OmniAgenda**, forma núcleo+anfitriona, solo PostgreSQL/web, naturaleza estudio/portafolio bajo `dvloprbn.dev`, alcance v1 de 4 dominios + cobro en línea, distribución por paquete npm versionado, sin migrar Espiral ni Dely Doggy, **Asclepios fuera de consideración**, animación CSS con componentes 100% propios, POS como paquete complementario abierto. Se documentó además una **regla general nueva de la carpeta `dvlopmnt/`** que el dueño quería registrada y no estaba en ningún lado: todo proyecto de esa carpeta es de estudio/demo, comparte los recursos de terceros del portafolio (Stripe, Resend), guarda solo datos de demostración con usuarios de prueba, y se publica bajo el dominio del portafolio. Puertos asignados sin choque contra los 6 proyectos existentes. **Cero código escrito.** |

@@ -12,7 +12,9 @@
 
 ## §1. El `EXCLUDE` va sobre el recurso, no sobre la reserva
 
-**Decidido: 2026-09-10 · Estado: diseño, sin implementar.**
+**Decidido: 2026-09-10 · Estado: implementado y verificado en vivo — Fase 2.**
+Migración `omniagenda_backend/prisma/migrations/20260910211526_init/` (bloque SQL a mano al
+final). Aplicada contra el Postgres real; 6 comprobaciones en vivo pasan (ver abajo).
 
 Espiral pone la restricción sobre `appointments` con `artist_id`: un artista, una cita. Funciona
 porque ahí un bloque siempre ocupa exactamente un recurso. OmniAgenda no puede asumirlo: una
@@ -47,11 +49,53 @@ Consecuencias aceptadas:
 **Descartado:** validar el traslape solo en el servicio. Es lo que Espiral documenta como
 "defensa más débil": dos peticiones simultáneas pasan las dos el `if` y las dos escriben.
 
+### Cómo quedó implementado (Fase 2)
+
+Los 6 modelos (`resources`, `calendars`, `schedule_rules`, `time_off`, `bookings`,
+`booking_resources`) más, escrito a mano en la migración:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
+ALTER TABLE "bookings"           ADD CONSTRAINT "bookings_time_order"           CHECK ("starts_at" < "ends_at");
+ALTER TABLE "booking_resources"  ADD CONSTRAINT "booking_resources_time_order" CHECK ("start_time" < "end_time");
+ALTER TABLE "time_off"           ADD CONSTRAINT "time_off_date_range_valid"    CHECK ("start_date" <= "end_date");
+
+ALTER TABLE "booking_resources"
+  ADD CONSTRAINT "no_overlapping_resource_bookings"
+  EXCLUDE USING gist ("resource_id" WITH =, tstzrange("start_time", "end_time") WITH &&)
+  WHERE (blocking = true AND status NOT IN ('cancelada', 'rechazada', 'expirada'));
+```
+
+`tstzrange(a, b)` es `[)` por defecto — inclusivo en el inicio, exclusivo en el fin: **la misma
+semántica semiabierta que el `Interval` de `omniagenda_core`**, así que "encimado" y "pegado"
+significan lo mismo en la base y en el motor.
+
+**Dos comprobaciones committeadas** (`omniagenda_backend/prisma/checks/`):
+
+- `double_booking.sql` — se corre contra el Postgres en vivo, en una transacción con `ROLLBACK`
+  (no deja datos). 6 casos, cada uno imprime `PASS`/`FAIL`:
+  1. traslape mismo recurso, ambos bloqueantes → **rechazado por PostgreSQL**
+  2. reservas adyacentes (`fin == inicio`) → permitidas (semiabierto)
+  3. traslape con `status='cancelada'` → permitido (el `WHERE` lo excluye)
+  4. traslape con `blocking=false` → permitido
+  5. mismo horario en otro recurso → libre
+  6. `start_time == end_time` → rechazado por el `CHECK`
+- `status-sync.mjs` — script Node sin dependencias: lee el `WHERE` de la migración y
+  `NON_BLOCKING_STATUSES` de `omniagenda_core/src/conflict/status.ts` y **falla si dejan de
+  coincidir**. Es la prueba que exige `PLAN_DESARROLLO.md` §3, del tipo que faltó en Espiral y
+  causó una vulnerabilidad real.
+
+**Pendiente de Fase 4:** el "único servicio escritor" que mantiene el espejo
+`booking_resources.{start_time,end_time,status}` sincronizado con `bookings`, y la transacción
+atómica multi-recurso. Hoy el espejo se llena a mano (seed) / en las pruebas.
+
 ---
 
 ## §2. `blocking` como columna: el conflicto duro y el blando conviven
 
-**Decidido: 2026-09-10 · Estado: diseño, sin implementar.**
+**Decidido: 2026-09-10 · Estado: implementado — Fase 2 (columna `booking_resources.blocking`,
+default `true`, dentro del `WHERE` del `EXCLUDE`) + Fase 1 (`evaluateConflict` la distingue).**
 
 No todos los bloques deben impedir otro bloque. Una tarea personal ("preparar el pedido") no
 debería bloquear la agenda de nadie; una consulta médica sí.
@@ -71,7 +115,10 @@ tabla ni una segunda restricción.
 
 ## §3. Una sola constante, y una prueba que lee la migración
 
-**Decidido: 2026-09-10 · Estado: diseño, sin implementar.**
+**Decidido: 2026-09-10 · Estado: implementado — Fase 2.** Constante en
+`omniagenda_core/src/conflict/status.ts`; la prueba que compara contra la migración es
+`omniagenda_backend/prisma/checks/status-sync.mjs` (Node, sin dependencias, apto para CI). Pasa
+verde.
 
 Herencia directa de
 `espiral_backend/src/appointments/appointment-status.constants.ts`, que existe por una

@@ -86,12 +86,11 @@ services:
       - omniagenda_network
     security_opt:
       - no-new-privileges:true
-    # Fase 0: generar el cliente de Prisma (esta gitignoreado, no existe en
-    # un clon limpio) y aplicar migraciones (todavia no hay ninguna: es un
-    # no-op que sale con codigo 0). El `db seed` se agrega en la Fase 2,
-    # cuando exista un schema con modelos. Mismo patron encadenado ya
-    # probado en Espiral / Dely Doggy / OmniUser.
-    command: /bin/sh -c "npx prisma generate && npx prisma migrate deploy && npm run start:dev"
+    # Generar el cliente de Prisma (esta gitignoreado, no existe en un clon
+    # limpio), aplicar migraciones y sembrar datos de demo. El seed es
+    # idempotente (ids fijos + upsert). Mismo patron encadenado ya probado
+    # en Espiral / Dely Doggy / OmniUser.
+    command: /bin/sh -c "npx prisma generate && npx prisma migrate deploy && npx prisma db seed && npm run start:dev"
 
   # ---------- SERVICIO 4: FRONTEND ----------
   omniagenda_frontend:
