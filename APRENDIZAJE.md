@@ -54,11 +54,27 @@ sobre estos cuatro archivos.
 - **Condición de carrera**: por qué dos peticiones simultáneas pasan las dos el mismo `if`.
 - **`timestamptz` vs `date`**: la distinción que ya desalineó nómina real en Espiral.
 
-### Fase 3 — Identidad y permisos
-- Modelo *fail-closed* con `APP_GUARD` + `@Public()`, y por qué invertirlo tarde cuesta caro.
-- Jerarquía de roles por `level` y por qué un admin no debe poder tocar a otro admin.
-- Qué es un IDOR y por qué filtrar por el identificador de la URL en vez de por el del token es
-  la vulnerabilidad más común de una API.
+### Fase 3 — Identidad y permisos  ✅ construido 2026-09-10
+
+Auth portada de OmniUser (`dvlopmnt/login`) con toda su profundidad + una capa nueva de permisos
+por calendario. Pendiente: sesión de repaso guiado.
+
+- **Modelo *fail-closed*** — `omniagenda_backend/src/app.module.ts` (los 3 `APP_GUARD`) +
+  `src/auth/guards/jwt-auth.guard.ts` (respeta `@Public()`). Por qué invertirlo tarde cuesta caro
+  (lo dice el checklist).
+- **Login en 3 pasos** — `src/auth/auth.service.ts` (`loginStep1/2/3`). Por qué el paso 1 no
+  revela si la cuenta existe; por qué el "challenge token" entre paso 2 y 3 nunca sirve de sesión.
+- **Refresh token con rotación + ventana de gracia** — `AuthService.refresh`. Por qué 2 pestañas
+  renovando a la vez no deben tronar, pero un token reusado 1 minuto después sí revoca todo.
+- **2FA (TOTP, RFC 6238)** — `src/two-factor/two-factor.service.ts` + `src/common/utils/totp.util.ts`
+  + `crypto.util.ts` (por qué el secreto TOTP se *cifra* y no se *hashea*, a diferencia de una
+  contraseña).
+- **Jerarquía de roles** — `src/users/users.service.ts` (`assertCanManageRole`): un admin no puede
+  tocar a otro admin ni exceder el `max_count` de director/super.
+- **Permisos por calendario (nuevo)** — `src/calendar-access/calendar-access.service.ts`. viewer <
+  booker < manager; admin global = manager implícito; `allowByVisibility` para lectura pública.
+- **Fuerza bruta** — `src/security-events/security-events.service.ts`: por qué el conteo vive en
+  Redis (ventana deslizante) y solo el cruce del umbral se persiste.
 
 ### Fase 4 — API
 - Transacción y atomicidad: por qué una reserva de dos mesas se guarda completa o no se guarda.

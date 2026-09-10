@@ -66,9 +66,10 @@ model calendars {
   created_at  DateTime @default(now()) @db.Timestamptz(6)
   updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
-  schedule_rules schedule_rules[]
-  time_off       time_off[]
-  bookings       bookings[]
+  schedule_rules   schedule_rules[]
+  time_off         time_off[]
+  bookings         bookings[]
+  calendar_members calendar_members[]
 
   @@index([active])
 }
@@ -147,6 +148,10 @@ model bookings {
   status      String   @default("pendiente") @db.VarChar(20)
   source_type String?  @db.VarChar(40)
   source_id   String?  @db.VarChar(64)
+  /// Quién creó la reserva (user_id como texto, sin FK). null = la creó un
+  /// flujo del sistema / un anfitrión vía API sin usuario final. Lo usa la
+  /// regla "un `booker` solo cancela sus propias reservas".
+  created_by  String?  @db.VarChar(64)
   starts_at   DateTime @db.Timestamptz(6)
   ends_at     DateTime @db.Timestamptz(6)
   created_at  DateTime @default(now()) @db.Timestamptz(6)
@@ -189,4 +194,146 @@ model booking_resources {
 
   @@index([booking_id])
   @@index([resource_id, start_time])
+}
+
+// ============================================================================
+// FASE 3 — Identidad y permisos.
+//
+// Núcleo de auth PORTADO de OmniUser (`dvlopmnt/login`) con toda su
+// profundidad: registro público, login en 3 pasos (correo → contraseña →
+// 2FA TOTP si aplica), rotación de refresh token con ventana de gracia +
+// revocación en cascada, jerarquía de roles (`level`/`max_count`), 2FA real
+// con códigos de recuperación de un solo uso, detección de fuerza bruta.
+//
+// NUEVO respecto a OmniUser: `calendar_members` — una capa de permisos POR
+// CALENDARIO encima del rol global. Ver CalendarAccessService.
+// ============================================================================
+
+/// Rol GLOBAL dinámico (tabla real, no un enum) — un rol nuevo se crea sin
+/// deploy. `level` (0=`usuario` … 5=`super`): quien gestiona cuentas solo
+/// asigna/edita un rol de nivel ESTRICTAMENTE MENOR al suyo. `max_count`:
+/// tope de cuentas activas con ese rol (`null`=sin límite; `1` para
+/// director/super). Portado de OmniUser sin cambios.
+model roles {
+  role_id     Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(50)
+  description String?  @db.VarChar(200)
+  is_system   Boolean  @default(false)
+  level       Int      @default(0)
+  max_count   Int?
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  users users[]
+}
+
+/// Una cuenta real. `password_hash` es hash de una vía (bcrypt).
+/// `totp_secret_encrypted` es CIFRADO (AES-256-GCM, reversible) porque el
+/// servidor necesita el secreto en claro por un instante para verificar el
+/// código de 6 dígitos. Portado de OmniUser.
+model users {
+  user_id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                 String    @unique @db.VarChar(255)
+  password_hash         String
+  name                  String?   @db.VarChar(150)
+  role_id               Int
+  must_change_password  Boolean   @default(false)
+  is_active             Boolean   @default(true)
+  totp_secret_encrypted String?
+  totp_enabled          Boolean   @default(false)
+  created_at            DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  roles                 roles                   @relation(fields: [role_id], references: [role_id], onDelete: Restrict)
+  refresh_tokens        refresh_tokens[]
+  totp_recovery_codes   totp_recovery_codes[]
+  password_reset_tokens password_reset_tokens[]
+  calendar_members      calendar_members[]
+}
+
+/// Sesión real — NO es un JWT. Valor aleatorio de alta entropía; solo su
+/// hash SHA-256 se guarda. Rotación con ventana de gracia + revocación en
+/// cascada ante reuso (ver AuthService.refresh). Portado de OmniUser.
+model refresh_tokens {
+  token_id   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String    @db.Uuid
+  token_hash String    @unique
+  revoked    Boolean   @default(false)
+  used_at    DateTime? @db.Timestamptz(6)
+  ip_address String?   @db.VarChar(45)
+  user_agent String?
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  expires_at DateTime  @db.Timestamptz(6)
+
+  users users @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+}
+
+/// 10 códigos de un solo uso para cuando el usuario pierde su app de 2FA.
+/// Guardados HASHEADOS (nunca en claro — solo se comparan). Portado de OmniUser.
+model totp_recovery_codes {
+  code_id    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String    @db.Uuid
+  code_hash  String
+  used_at    DateTime? @db.Timestamptz(6)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+
+  users users @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+}
+
+/// Token de un solo uso para "olvidé mi contraseña" — solo el hash se
+/// guarda. Vigencia 2 h; al pedir uno nuevo se invalida el anterior sin
+/// usar. Portado de OmniUser.
+model password_reset_tokens {
+  token_id   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String    @db.Uuid
+  token_hash String    @unique
+  used_at    DateTime? @db.Timestamptz(6)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  expires_at DateTime  @db.Timestamptz(6)
+
+  users users @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+}
+
+/// Fuerza bruta detectada — el conteo vive en Redis (ventana deslizante);
+/// solo al cruzar el umbral se escribe una fila. `type`: login_bruteforce
+/// | twofactor_bruteforce | refresh_token_reuse. Portado de OmniUser.
+model security_events {
+  security_event_id String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fingerprint       String    @unique @db.VarChar(64)
+  type              String    @db.VarChar(30)
+  identifier        String
+  ip_address        String?   @db.VarChar(45)
+  user_agent        String?
+  attempts          Int
+  occurrence_count  Int       @default(1)
+  status            String    @default("nuevo") @db.VarChar(20)
+  first_seen_at     DateTime  @default(now()) @db.Timestamptz(6)
+  last_seen_at      DateTime  @default(now()) @db.Timestamptz(6)
+  resolved_at       DateTime? @db.Timestamptz(6)
+  resolved_note     String?
+}
+
+/// NUEVO (sin equivalente en OmniUser). Permiso de un usuario SOBRE UN
+/// CALENDARIO concreto, encima de su rol global:
+///   viewer  — ve las reservas del calendario
+///   booker  — además crea/cancela SUS PROPIAS reservas
+///   manager — además gestiona todas las reservas, horarios, ausencias y
+///             la membresía del calendario
+/// Un rol global admin/director/super es `manager` implícito en TODOS los
+/// calendarios (no necesita fila aquí). `granted_by` es VARCHAR sin FK
+/// (mismo criterio que las bitácoras): una cuenta borrada no rompe el
+/// registro. Ver CalendarAccessService.
+model calendar_members {
+  calendar_member_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  calendar_id        String   @db.Uuid
+  user_id            String   @db.Uuid
+  calendar_role      String   @db.VarChar(20) // viewer | booker | manager
+  granted_by         String   @db.VarChar(64)
+  created_at         DateTime @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  calendars calendars @relation(fields: [calendar_id], references: [calendar_id], onDelete: Cascade, onUpdate: NoAction)
+  users     users     @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([calendar_id, user_id])
+  @@index([user_id])
 }

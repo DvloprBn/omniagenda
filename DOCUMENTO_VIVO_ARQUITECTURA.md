@@ -4,9 +4,8 @@
 > aprendió. La estrategia vive en [`PLAN_DESARROLLO.md`](./PLAN_DESARROLLO.md); el día a día en
 > [`ESTADO_PROYECTO.md`](./ESTADO_PROYECTO.md).
 >
-> **v0.1 — 2026-09-10.** Todas las secciones de abajo son **decisiones de diseño previas al
-> código**. Ninguna está verificada contra un sistema corriendo todavía, y así se marca cada una.
-> Conforme se construya, cada sección gana su nota de verificación real.
+> **v0.3 — 2026-09-10.** Cada sección lleva su estado: qué está implementado y verificado en vivo
+> (Fases 0–3) y qué sigue siendo diseño previo al código (Fases 4+).
 
 ---
 
@@ -281,3 +280,90 @@ desincronizar en silencio.
 | 5 | Cuatro dominios en v1 | Es el alcance más amplio de cualquier proyecto tuyo hasta hoy | Aceptado por el dueño; se ordena por fases (`PLAN_DESARROLLO.md` §5) |
 | 6 | Rangos que cruzan medianoche (un bar que cierra a las 02:00) | `expandWeeklyHours` los rechaza hoy con error | Abierto a propósito — Espiral tampoco los soporta; se agrega cuando un caso real lo pida |
 | 7 | Ambigüedad DST en `instantFromWall` (hora que ocurre dos veces / que no existe) | Una zona con horario de verano podría resolver mal en la transición | Acotado y documentado en `zoned.ts`; los verticales de referencia (México) no usan DST desde 2022 |
+
+---
+
+## §9. Identidad: RBAC global portado + permisos por calendario
+
+**Decidido: 2026-09-10 · Estado: implementado y verificado en vivo — Fase 3.**
+
+### Lo portado de OmniUser (sin cambios de lógica)
+
+El núcleo de auth de `dvlopmnt/login` es el proyecto de referencia para esto — se portó **con
+toda su profundidad**, no una base recortada (feedback explícito del dueño):
+
+- Registro público, **login en 3 pasos** (correo → contraseña → 2FA TOTP si la cuenta lo tiene).
+- Refresh token opaco (no un JWT), solo su hash SHA-256 en la base, **rotación con ventana de
+  gracia de 30 s** + **revocación en cascada** de todas las sesiones ante reuso fuera de esa
+  ventana.
+- **2FA real (RFC 6238)**: setup con QR, 10 códigos de recuperación de un solo uso (hasheados),
+  secreto TOTP **cifrado en reposo** (AES-256-GCM, llave `TOTP_ENCRYPTION_KEY` distinta de
+  `JWT_SECRET`).
+- **Jerarquía de roles** (`roles.level` 0–5, `max_count`): quien gestiona cuentas solo asigna un
+  rol de nivel estrictamente menor al suyo; director/super son cargos de una sola persona,
+  forzado de verdad.
+- **Detección de fuerza bruta** (login, 2FA, reuso de refresh token) con conteo en Redis y
+  alerta por correo a admin/super, una por ventana.
+- Anti-enumeración: mismo mensaje "credenciales inválidas" exista o no la cuenta; `forgot-password`
+  responde igual siempre.
+
+### Lo nuevo: modelo *fail-closed* (mejora sobre OmniUser)
+
+OmniUser aplicaba `JwtAuthGuard` por controlador (`@UseGuards`). El checklist de seguridad lo
+llama *fail-open*: un endpoint que olvide su guard queda público sin que nada lo delate.
+**OmniAgenda lo invierte desde la Fase 3**: `JwtAuthGuard` es `APP_GUARD` global; **toda ruta
+exige sesión** salvo las marcadas `@Public()` explícito (registro, login, refresh, logout,
+forgot/reset-password, `/health`). `RolesGuard` también es global y no opina si la ruta no
+declaró `@Roles(...)`. Orden real de los tres guards globales: Throttler → JwtAuth → Roles.
+
+### Lo nuevo: permisos POR CALENDARIO (`calendar_members`)
+
+El rol global sigue mandando en lo **sistémico** (crear usuarios, editar roles). Encima de eso,
+una tabla `calendar_members` otorga a un usuario un rol **sobre un calendario concreto**:
+
+| Rol de calendario | Puede |
+|---|---|
+| `viewer` | ver las reservas del calendario |
+| `booker` | + crear/cancelar **sus propias** reservas |
+| `manager` | + gestionar todas las reservas, horarios, ausencias y la membresía del calendario |
+
+Reglas (en `CalendarAccessService`, exportado para que la Fase 4 lo use):
+
+- Un rol global `admin`/`director`/`super` es **`manager` implícito en TODOS los calendarios**
+  (no necesita fila).
+- Cualquier otra cuenta solo tiene lo que `calendar_members` le otorgue — más, **solo para
+  lectura**, lo que la `visibility` del calendario permita (`public`/`busy_only` → `viewer` sin
+  membresía, vía `assertCalendarAccess(..., { allowByVisibility: true })`). Esto es la superficie
+  pública deliberada de la §4.1, acotada.
+- `@CalendarRole('manager')` + `CalendarAccessGuard` (por ruta, necesita el `:calendarId`) es el
+  mecanismo declarativo; `assertCalendarAccess(...)` es la versión imperativa para los servicios.
+- `CHECK (calendar_role IN ('viewer','booker','manager'))` a mano en la migración — conjunto
+  cerrado, garantizado en la base.
+
+### Verificación (2026-09-10, reinicio limpio `down -v`)
+
+- 3 migraciones aplican desde cero; seed corre (roles + 6 cuentas de prueba + demo + membresías).
+- `nest build` → **0 errores**; **31 pruebas Jest** verdes (6 archivos: 3 puros portados —
+  crypto/totp/escapeHtml — + 2 de integración portados — roles/users service — + 1 nuevo —
+  `calendar-access.service`, la matriz de permisos).
+- **Barrido de control de acceso** (`omniagenda_backend/test/auth-sweep.sh`, método del
+  checklist): **27/27 PASS** — toda ruta protegida da 401 sin sesión; las `@Public()` nunca dan
+  401; `usuario` global recibe 403 en `/users` (RolesGuard); la matriz por calendario
+  (admin global = manager implícito; `booker` cubre `viewer` pero no `manager`; no-miembro sin
+  acceso a un calendario no público) se comporta como se diseñó.
+- **2FA end-to-end por curl**: setup → confirm (10 códigos) → login pide 2FA → login/2fa con TOTP
+  fresco emite sesión → `/auth/me` 200; código de recuperación: 1er uso 200, 2º uso del mismo 401.
+- Los checks de la Fase 2 (`double_booking.sql` 6/6, `status-sync.mjs`) siguen verdes.
+
+**Herramienta de runtime, no de test unitario:** el runner de Jest es solo para el backend
+(NestJS DI necesita `emitDecoratorMetadata`, que `tsx`/esbuild no emite — por eso Jest+ts-jest
+aquí y `node:test`+`tsx` en `omniagenda_core`). El cliente de Prisma 7 generado usa imports `.js`
+estilo ESM; se resuelve con `moduleNameMapper: { "^(\\.{1,2}/.*)\\.js$": "$1" }` — misma cura
+que OmniUser documentó.
+
+### Pendiente (Fase 4+)
+
+Los endpoints de reservas/horarios/disponibilidad que **consumen** `CalendarAccessService` y
+`@omniagenda/core` en runtime (el cableado del paquete al backend se hace ahí). Frontend de
+login (Fase 5). `RESEND_API_KEY` real de prueba (hoy placeholder — el flujo de correo es real
+pero no entrega).
