@@ -176,6 +176,24 @@ por calendario. Pendiente: sesión de repaso guiado.
   regía el resto del seed (datos ficticios, repo público), extendido a "suficientes para probar
   cada vista", no solo "el mínimo que hace pasar una prueba".
 
+### Fase 5b — Vista de Día y el bug de zona horaria  ✅ 2º incremento construido 2026-09-11
+- **Generalizar cuando el segundo caso de uso llega, no antes** — `week-view.tsx` no tenía nada
+  específico de "semana"; construir Día lo demostró de inmediato (misma rejilla, mismo arrastre,
+  solo cambia cuántas columnas). Esperar al segundo caso real antes de generalizar evitó adivinar
+  mal la forma de la abstracción.
+- **`new Date('2026-09-11')` no es "el 11 de septiembre" — es medianoche UTC** — el error más
+  común y más silencioso al trabajar con fechas sin hora: JavaScript la interpreta en UTC, y
+  cualquier zona detrás de UTC (todas las de este proyecto) la ve como la TARDE del día anterior.
+  El bug pasó desapercibido en la Vista de Semana (una fecha de prueba a mitad de semana absorbe
+  el corrimiento de 6h) y solo se hizo visible con Día, que no tiene ese margen. La lección: un
+  caso de prueba "fácil" (mitad de semana) puede esconder exactamente el bug que un caso más
+  estrecho (un solo día) expone gratis.
+- **El mismo bug puede vivir dos veces, en dos lados distintos, por la misma causa raíz** —
+  `date-nav.tsx` (cliente) tenía el mismo patrón (parseo UTC + mutación en la zona del
+  NAVEGADOR), no la del servidor. Corregirlo solo del lado del servidor habría dejado la
+  navegación del cliente rota para cualquier visitante en una zona horaria distinta a la del
+  negocio.
+
 ### Fase 7 — Cobro en línea
 - Por qué un identificador de Stripe guardado puede dejar de existir del lado de Stripe
   (lección #9 del Bridge — tumbó la pantalla de pago de un cliente real).

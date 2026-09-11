@@ -1,9 +1,9 @@
 import { serverFetch } from '@/lib/server-fetch';
 import type { Booking, BusyBooking, Calendar } from '@/lib/types';
-import { monthLabel, viewRange, weekdayLabel, type CalendarView } from '@/lib/calendar-nav';
+import { dayLabel, dayNumberLabel, monthLabel, parseDateInZone, viewRange, weekdayLabel, type CalendarView } from '@/lib/calendar-nav';
 import { ViewSwitcher } from '@/components/view-switcher';
 import { DateNav } from '@/components/date-nav';
-import { WeekView } from '@/components/week-view';
+import { TimeGridView } from '@/components/time-grid-view';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +14,9 @@ const VALID_VIEWS: CalendarView[] = ['day', 'week', 'month', 'agenda', 'timeline
  * sobre los cimientos de la Fase 5a (sesión, selector de sucursal, cliente
  * de API real). Orden de construcción (cada una verificada antes de la
  * siguiente): Semana primero — la más completa, fija el patrón de
- * arrastrar-y-soltar — luego Día, Mes, Agenda, Línea de tiempo.
+ * arrastrar-y-soltar — luego Día (reutiliza esa misma rejilla vía
+ * `TimeGridView` con `daysCount=1`, ver ese archivo), Mes, Línea de
+ * tiempo. Agenda formaliza la lista que ya existía en la Fase 5a.
  *
  * Vista y fecha viven en la URL (`?view=`, `?date=`), mismo criterio que
  * `?cal=` del selector de sucursal (Fase 5a): un enlace a "la semana del
@@ -38,7 +40,11 @@ export default async function AgendaHomePage({
   }
 
   const view: CalendarView = VALID_VIEWS.includes(rawView as CalendarView) ? (rawView as CalendarView) : 'week';
-  const anchorDate = rawDate && !Number.isNaN(new Date(rawDate).getTime()) ? new Date(rawDate) : new Date();
+  // "?date=" siempre es YYYY-MM-DD (sin hora) — se interpreta como esa
+  // fecha EN LA ZONA DEL CALENDARIO, nunca como medianoche UTC (ver
+  // parseDateInZone: en una zona detrás de UTC eso resuelve al día
+  // anterior). Sin el parámetro, "hoy" sí es un instante real.
+  const anchorDate = rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? parseDateInZone(rawDate, active.timezone) : new Date();
   const { from, to } = viewRange(view, anchorDate, active.timezone);
   const bookings = await serverFetch<(Booking | BusyBooking)[]>(
     `/calendars/${active.calendar_id}/bookings?from=${from.toISOString()}&to=${to.toISOString()}`,
@@ -49,19 +55,21 @@ export default async function AgendaHomePage({
       <section className="oa-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <ViewSwitcher current={view} />
-          <DateNav view={view} dateLabel={view === 'month' ? monthLabel(anchorDate, active.timezone) : `${weekdayLabel(from, active.timezone)} ${from.getDate()} – ${weekdayLabel(new Date(to.getTime() - 1), active.timezone)} ${new Date(to.getTime() - 1).getDate()}`} />
+          <DateNav view={view} dateLabel={dateRangeLabel(view, anchorDate, from, to, active.timezone)} timeZone={active.timezone} />
         </div>
       </section>
 
-      {view === 'week' && <WeekView calendarId={active.calendar_id} weekStartIso={from.toISOString()} timeZone={active.timezone} bookings={bookings} />}
+      {view === 'week' && <TimeGridView calendarId={active.calendar_id} rangeStartIso={from.toISOString()} daysCount={7} timeZone={active.timezone} bookings={bookings} />}
+
+      {view === 'day' && <TimeGridView calendarId={active.calendar_id} rangeStartIso={from.toISOString()} daysCount={1} timeZone={active.timezone} bookings={bookings} />}
 
       {view === 'agenda' && <AgendaListView bookings={bookings} />}
 
-      {(view === 'day' || view === 'month' || view === 'timeline') && (
+      {(view === 'month' || view === 'timeline') && (
         <section className="oa-card p-6">
           <p className="text-sm" style={{ color: 'var(--ink-500)' }}>
-            La vista de {view === 'day' ? 'Día' : view === 'month' ? 'Mes' : 'Línea de tiempo'} es el
-            siguiente incremento de la Fase 5b — todavía no está construida. Mientras tanto,{' '}
+            La vista de {view === 'month' ? 'Mes' : 'Línea de tiempo'} es el siguiente incremento de
+            la Fase 5b — todavía no está construida. Mientras tanto,{' '}
             <strong>{bookings.length}</strong> reserva(s) real(es) en esta ventana ({from.toLocaleDateString('es-MX')} –{' '}
             {to.toLocaleDateString('es-MX')}).
           </p>
@@ -69,6 +77,21 @@ export default async function AgendaHomePage({
       )}
     </div>
   );
+}
+
+/**
+ * Etiqueta legible del rango activo, junto al `ViewSwitcher`. Nunca usa
+ * `.getDate()`/`.getDay()` sobre un instante ya calculado — esos métodos
+ * leen la zona horaria del SERVIDOR, que puede no ser la del calendario;
+ * `dayLabel`/`weekdayLabel`/`monthLabel` (calendar-nav.ts) siempre reciben
+ * la zona real del calendario.
+ */
+function dateRangeLabel(view: CalendarView, anchorDate: Date, from: Date, to: Date, timeZone: string): string {
+  if (view === 'month') return monthLabel(anchorDate, timeZone);
+  if (view === 'day' || view === 'timeline') return dayLabel(from, timeZone);
+  // Semana / Agenda: rango "lun 7 – dom 13".
+  const lastDay = new Date(to.getTime() - 1);
+  return `${weekdayLabel(from, timeZone)} ${dayNumberLabel(from, timeZone)} – ${weekdayLabel(lastDay, timeZone)} ${dayNumberLabel(lastDay, timeZone)}`;
 }
 
 function AgendaListView({ bookings }: { bookings: (Booking | BusyBooking)[] }) {

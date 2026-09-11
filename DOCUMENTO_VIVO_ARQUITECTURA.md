@@ -4,11 +4,11 @@
 > aprendió. La estrategia vive en [`PLAN_DESARROLLO.md`](./PLAN_DESARROLLO.md); el día a día en
 > [`ESTADO_PROYECTO.md`](./ESTADO_PROYECTO.md).
 >
-> **v0.9 — 2026-09-11.** Cada sección lleva su estado: qué está implementado y verificado en
+> **v0.10 — 2026-09-11.** Cada sección lleva su estado: qué está implementado y verificado en
 > vivo (Fases 0–4, el negocio de demostración decidido en §11, los cimientos de interfaz en §12,
-> el vínculo recurso↔cuenta en §13, y el primer incremento de la Fase 5b — cimientos + Vista de
-> Semana, corregida tras la primera revisión real del dueño — en §14) y qué sigue en construcción
-> (el resto de la Fase 5b: Día/Mes/Línea de tiempo).
+> el vínculo recurso↔cuenta en §13, el primer incremento de la Fase 5b — cimientos + Vista de
+> Semana — en §14, y el segundo — Vista de Día + corrección de un bug real de zona horaria — en
+> §15) y qué sigue en construcción (Mes y Línea de tiempo).
 
 ---
 
@@ -794,7 +794,7 @@ Jest solo para el frontend.
 
 - `tsc --noEmit` limpio; `next build` producción compila sin errores, rutas siguen clasificadas
   correctamente.
-- **26 pruebas `node:test`** nuevas en `omniagenda_frontend/test/`: 10 de `calendar-nav.ts`
+- **16 pruebas `node:test`** nuevas en `omniagenda_frontend/test/`: 10 de `calendar-nav.ts`
   (medianoche/inicio de semana/inicio de mes en zona real, ventanas de vista sin huecos) + 6 de
   `grid-math.ts` (redondeo de arrastre, conversión px↔minutos, recorte a la rejilla visible).
 - Con el stack completo reconstruido desde cero (migraciones + seed desde vacío): login real por
@@ -850,3 +850,75 @@ corridas seguidas), `GET /agenda?view=week&date=2026-09-09&cal=<Centro>` → 9 b
 
 Día, Mes, Línea de tiempo (en ese orden) — cada una reutilizando `BookingBlock`,
 `calendar-nav.ts` y `grid-math.ts` ya construidos aquí.
+
+---
+
+## §15. Fase 5b, segundo incremento: Vista de Día + un bug real de zona horaria
+
+**Decidido: 2026-09-11 · Estado: implementado y verificado — Vista de Día funcional, arrastrar y
+soltar confirmado en navegador real por el dueño ("se siente muy natural, funciona muy bien,
+mueve entre columnas sin retrasos").**
+
+### `WeekView` se generaliza a `TimeGridView`
+
+Construir la Vista de Día expuso que no había NADA específico de "semana" en la lógica de
+`week-view.tsx` — la rejilla, el arrastre con Pointer Events, la alternativa de teclado, todo es
+"N columnas de días sobre una rejilla de 24h", con N=7 para semana y N=1 para día. Mantener dos
+archivos casi idénticos habría significado dos copias del mismo manejo de eventos divergiendo con
+el tiempo — se generalizó a `time-grid-view.tsx` (`TimeGridView`, parámetro `daysCount: 1 | 7`),
+y `week-view.tsx` se eliminó. Las clases de Tailwind para la cuadrícula (`grid-cols-[...]`) se
+seleccionan entre dos literales completos según `daysCount`, nunca con un template string
+interpolado: el compilador de Tailwind necesita ver la clase completa y estática en el código
+fuente para generarla, un string armado en tiempo de ejecución no aparece en el CSS final.
+
+### El bug real: `date=2026-09-11` no siempre significa "11 de septiembre"
+
+Al verificar la Vista de Día contra la fecha real de hoy, apareció con el día equivocado y sin
+reservas. Causa raíz: `agenda/page.tsx` parseaba el parámetro `?date=` con `new Date('2026-09-11')`
+directo — JavaScript interpreta una fecha sin hora como **medianoche UTC**, y Ciudad de México
+(UTC-6) ve esa misma instante como las **18:00 del día ANTERIOR**. Cualquier vista anclada en ese
+parámetro terminaba mostrando el 10 de septiembre en vez del 11. La Vista de Semana no lo mostró
+al construirse (una fecha de prueba a mitad de semana absorbe el corrimiento de 6h sin cruzar a
+otra semana), pero el bug ya estaba ahí — la Vista de Día, con un solo día de margen de error, lo
+expuso de inmediato.
+
+**Corregido con dos funciones nuevas en `calendar-nav.ts`:**
+- `parseDateInZone(dateStr, timeZone)` — interpreta "YYYY-MM-DD" como medianoche de ESE día EN LA
+  ZONA del calendario (ancla con mediodía UTC antes de normalizar, para no cruzar el borde del día
+  por el offset).
+- `addMonthsInZone(instant, months, timeZone)` — mismo principio para "mes siguiente/anterior".
+
+**El mismo patrón de bug vivía también en `date-nav.tsx`** (el `‹ Hoy ›` del cliente): parseaba
+`?date=` con `new Date(iso)` y mutaba con `.setDate()`/`.setMonth()` — operaciones que leen la
+zona horaria del NAVEGADOR DEL VISITANTE, no la del calendario. Un visitante en una zona horaria
+distinta a la del negocio podía navegar "un día" y aterrizar en la fecha equivocada. Corregido
+para usar las mismas funciones conscientes de zona (`parseDateInZone`/`addDays`/
+`addMonthsInZone`), con `timeZone` ahora como prop explícita de `DateNav`.
+
+**Límite reconocido, documentado, no resuelto:** la conversión de vuelta (instante → `"YYYY-MM-DD"`
+vía `.toISOString().slice(0,10)`) es correcta para zonas DETRÁS de UTC (como México, todas las
+zonas de referencia de este proyecto) pero se rompería para una zona ADELANTE de UTC. Se acepta
+como la misma simplificación ya declarada en el resto de `calendar-nav.ts` ("zonas de referencia
+sin DST, América") — no vale la pena una solución general para un negocio ficticio que siempre
+vive en una zona.
+
+### Verificado (2026-09-11, rebuild limpio desde cero)
+
+- `tsc --noEmit` y `next build` producción limpios.
+- **4 pruebas nuevas** en `calendar-nav.test.ts` que reproducen el bug exacto y confirman la
+  corrección: `parseDateInZone('2026-09-11', MX)` nunca resuelve a otro día; `addMonthsInZone`
+  cruza fin de año correctamente. **20/20 pruebas del frontend.**
+- Con el stack reconstruido desde cero: `GET /agenda?view=day&date=2026-09-11` (viernes real) →
+  `200`, exactamente **3 bloques reales** (las 3 reservas de ese día en el seed) y la etiqueta
+  correcta "vie 11" — antes del fix mostraba "jue 10" y 0 bloques. `?view=week&date=2026-09-11`
+  sigue devolviendo la semana correcta (9 bloques) sin regresión.
+- Sin regresión: núcleo 63/63, backend Jest 51/51, `auth-sweep.sh` 27/27, `agenda-e2e.sh` 23/23,
+  checks SQL de Fase 2.
+- **Confirmado por el dueño en su propio navegador**: el arrastrar-y-soltar "se siente muy
+  natural, funciona muy bien, mueve entre columnas sin retrasos" — primera confirmación real de
+  "sensación física" en el proyecto (`PLAN_DESARROLLO.md` §9), no solo de que compila o responde
+  200.
+
+### Pendiente
+
+Mes, Línea de tiempo (en ese orden).

@@ -32,13 +32,20 @@ function isEditable(b: AnyBooking): b is Booking {
 }
 
 /**
- * Vista de Semana (Fase 5b) — la vista ancla que fija el patrón de
- * arrastrar-y-soltar para las demás. Arrastre con Pointer Events escritos
- * desde cero (nunca el HTML5 Drag&Drop nativo ni una librería — cero
- * "sensación física" con el nativo, y PLAN_DESARROLLO.md §9 prohíbe
- * librerías de animación/DnD de terceros): mover un bloque aplica
- * `transform: translate()` en tiempo real; al soltar, `PATCH
- * /calendars/:id/bookings/:id` con el horario nuevo. Si el backend
+ * Rejilla de tiempo compartida entre Semana (7 columnas) y Día (1
+ * columna) — Fase 5b. Generalizada desde la Vista de Semana original en
+ * cuanto Día necesitó exactamente la misma lógica de arrastre/teclado con
+ * un `daysCount` distinto: no hay nada específico de "semana" aquí, así
+ * que duplicar el archivo habría significado mantener dos copias del
+ * mismo manejo de Pointer Events.
+ *
+ * Arrastre con Pointer Events escritos desde cero (nunca el HTML5
+ * Drag&Drop nativo ni una librería — cero "sensación física" con el
+ * nativo, y PLAN_DESARROLLO.md §9 prohíbe librerías de animación/DnD de
+ * terceros; **confirmado en navegador real por el dueño**: "se siente muy
+ * natural, funciona muy bien, mueve entre columnas sin retrasos"): mover
+ * un bloque aplica `transform: translate()` en tiempo real; al soltar,
+ * `PATCH /calendars/:id/bookings/:id` con el horario nuevo. Si el backend
  * responde con un conflicto real (409) o sin permiso (403), el bloque
  * REGRESA a su lugar con la animación `oa-shake` — el backend sigue
  * siendo la única fuente de verdad, esto nunca "decide" que un horario es
@@ -49,21 +56,24 @@ function isEditable(b: AnyBooking): b is Booking {
  * + PATCH + revertir si falla) — nunca queda como la única forma de
  * arrastrar la vista sea con mouse/touch.
  */
-export function WeekView({
+export function TimeGridView({
   calendarId,
-  weekStartIso,
+  rangeStartIso,
+  daysCount,
   timeZone,
   bookings: initialBookings,
 }: {
   calendarId: string;
-  weekStartIso: string;
+  rangeStartIso: string;
+  daysCount: 1 | 7;
   timeZone: string;
   bookings: AnyBooking[];
 }) {
   const router = useRouter();
-  const weekStart = new Date(weekStartIso);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const rangeStart = new Date(rangeStartIso);
+  const days = Array.from({ length: daysCount }, (_, i) => addDays(rangeStart, i));
   const dayStarts = days.map((d) => startOfDayInZone(d, timeZone));
+  const gridColsClass = daysCount === 1 ? 'grid-cols-[3.5rem_repeat(1,1fr)]' : 'grid-cols-[3.5rem_repeat(7,1fr)]';
 
   const [bookings, setBookings] = useState(initialBookings);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -110,7 +120,7 @@ export function WeekView({
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     const grid = gridRef.current;
     if (!grid) return;
-    const columnWidth = grid.getBoundingClientRect().width / 7;
+    const columnWidth = grid.getBoundingClientRect().width / daysCount;
     dragStateRef.current = {
       bookingId: booking.booking_id,
       pointerId: e.pointerId,
@@ -175,7 +185,7 @@ export function WeekView({
         </div>
       )}
       {/* Encabezado de días */}
-      <div className="grid grid-cols-[3.5rem_repeat(7,1fr)] border-b" style={{ borderColor: 'var(--ink-100)' }}>
+      <div className={`grid ${gridColsClass} border-b`} style={{ borderColor: 'var(--ink-100)' }}>
         <div />
         {days.map((d, i) => (
           <div key={i} className="border-l px-2 py-2 text-center" style={{ borderColor: 'var(--ink-100)' }}>
@@ -189,8 +199,8 @@ export function WeekView({
         ))}
       </div>
 
-      {/* Cuerpo: gutter de horas + 7 columnas */}
-      <div className="grid grid-cols-[3.5rem_repeat(7,1fr)]" style={{ height: GRID_HEIGHT }} ref={gridRef}>
+      {/* Cuerpo: gutter de horas + columnas de día */}
+      <div className={`grid ${gridColsClass}`} style={{ height: GRID_HEIGHT }} ref={gridRef}>
         <div className="relative">
           {HOURS.map((h) => (
             <div key={h} className="oa-grid-row absolute w-full pr-1.5 text-right text-[0.6875rem]" style={{ top: minutesToTopPx(h * 60, PX_PER_MINUTE), color: 'var(--ink-500)' }}>

@@ -6,9 +6,11 @@ import {
   startOfMonthInZone,
   viewRange,
   addDays,
+  addMonthsInZone,
   daysBetween,
   hourLabel,
   minutesSinceDayStart,
+  parseDateInZone,
 } from '../src/lib/calendar-nav';
 
 const MX = 'America/Mexico_City'; // UTC-6 todo el año en las fechas usadas aquí
@@ -74,4 +76,25 @@ test('hourLabel: formato de 12 horas en español', () => {
   assert.equal(hourLabel(9), '9 a.m.');
   assert.equal(hourLabel(13), '1 p.m.');
   assert.equal(hourLabel(0), '12 a.m.');
+});
+
+test('parseDateInZone: "2026-09-11" en CDMX NUNCA resuelve a otro día (bug real: medianoche UTC caía en el día anterior)', () => {
+  const parsed = parseDateInZone('2026-09-11', MX);
+  assert.equal(parsed.toISOString(), '2026-09-11T06:00:00.000Z'); // medianoche CDMX del día 11, no del 10
+});
+
+test('parseDateInZone: fin de mes/año no se corre', () => {
+  assert.equal(parseDateInZone('2026-12-31', MX).toISOString(), '2026-12-31T06:00:00.000Z');
+  assert.equal(parseDateInZone('2026-01-01', MX).toISOString(), '2026-01-01T06:00:00.000Z');
+});
+
+test('addMonthsInZone: avanza y retrocede un mes preservando el día', () => {
+  const start = parseDateInZone('2026-06-15', MX);
+  assert.equal(addMonthsInZone(start, 1, MX).toISOString(), '2026-07-15T06:00:00.000Z');
+  assert.equal(addMonthsInZone(start, -1, MX).toISOString(), '2026-05-15T06:00:00.000Z');
+});
+
+test('addMonthsInZone: cruza el año correctamente', () => {
+  const dec = parseDateInZone('2026-12-15', MX);
+  assert.equal(addMonthsInZone(dec, 1, MX).toISOString(), '2027-01-15T06:00:00.000Z');
 });

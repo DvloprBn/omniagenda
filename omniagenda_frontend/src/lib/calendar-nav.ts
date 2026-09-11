@@ -58,6 +58,35 @@ export function addDays(instant: Date, days: number): Date {
   return new Date(instant.getTime() + days * 86_400_000);
 }
 
+/**
+ * Interpreta una fecha "YYYY-MM-DD" (sin hora, ej. `?date=` en la URL)
+ * como medianoche de ESE día en `timeZone` — NUNCA `new Date('2026-09-11')`
+ * a secas: eso lo interpreta como medianoche UTC, que en una zona detrás
+ * de UTC (América) cae la TARDE del día ANTERIOR — un `date=2026-09-11`
+ * con Ciudad de México (UTC-6) resolvía a "10 de septiembre" en vez de
+ * "11", moviendo la Vista de Día un día completo y dejándola sin las
+ * reservas reales de "hoy". Se ancla con mediodía UTC (nunca cae fuera
+ * del día calendario correcto en las zonas de referencia de este
+ * proyecto, todas América, sin DST) antes de buscar la medianoche real.
+ */
+export function parseDateInZone(dateStr: string, timeZone: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const noonUtc = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  return startOfDayInZone(noonUtc, timeZone);
+}
+
+/**
+ * Suma (o resta) meses a un instante, preservando la zona — para "mes
+ * siguiente"/"mes anterior" en `DateNav`. Igual que `parseDateInZone`, se
+ * ancla a mediodía UTC antes de normalizar, para no cruzar el borde del
+ * día por el offset de la zona.
+ */
+export function addMonthsInZone(instant: Date, months: number, timeZone: string): Date {
+  const { year, month, day } = datePartsInZone(instant, timeZone);
+  const noonUtc = new Date(Date.UTC(year, month - 1 + months, day, 12, 0, 0));
+  return startOfDayInZone(noonUtc, timeZone);
+}
+
 /** Lunes de la semana (ISO) que contiene `instant`, medianoche local de `timeZone`. */
 export function startOfWeekInZone(instant: Date, timeZone: string): Date {
   const startOfDay = startOfDayInZone(instant, timeZone);
