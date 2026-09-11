@@ -124,6 +124,25 @@ por calendario. Pendiente: sesión de repaso guiado.
 - **El chequeo optimista de `proxy.ts`**: por qué basta con mirar si la cookie EXISTE (nunca
   validar el JWT ahí) para decidir un redirect — la autorización real siempre la hace el backend.
 
+### Vínculo recurso↔cuenta  ✅ construido 2026-09-11
+
+- **RBAC contesta una pregunta distinta a "identidad de recurso"** — el rol global
+  (`roles.level`) responde "¿qué puede hacer esta cuenta en el sistema?"; "¿qué recurso agendable
+  ES esta cuenta?" es una pregunta ortogonal, y mezclarlas habría obligado a inventar un rol
+  "estilista" que no aporta ningún permiso real, solo una etiqueta. Reconocer que dos preguntas
+  que *suenan* parecidas piden modelos distintos es la parte que vale la pena recordar.
+- **`onDelete: SetNull` como decisión de negocio, no solo de sintaxis** —
+  `resources.user_id`: borrar la cuenta de login de alguien que deja la empresa nunca debe borrar
+  su historial de reservas ni el recurso que representaba. El motor de base de datos hace cumplir
+  esto solo, sin lógica de aplicación que se pueda olvidar.
+- **Un `@unique` de Postgres como la garantía real, el código solo la traduce** — mismo patrón
+  que el `EXCLUDE` de reservas: `ResourcesService.update` no "revisa primero si ya está
+  vinculada" (eso tiene una ventana de carrera); deja que la base de datos rechace el duplicado
+  (`P2002`) y traduce ese error a un 409 legible.
+- **Ancorar siempre en el token, nunca en un parámetro de ruta** — `GET /me/schedule` no tiene
+  ningún `:id` que un cliente pueda manipular; toda la consulta parte de `caller.userId`. Es la
+  diferencia entre "esta ruta no necesita permisos especiales" y "esta ruta es insegura".
+
 ### Fase 5b — Interfaz real y animación (pendiente)
 - Por qué solo `transform` y `opacity` animan a 60fps, y qué hace el navegador con `width`.
 - `prefers-reduced-motion`: la animación como decisión de accesibilidad, no de gusto.

@@ -11,15 +11,16 @@
 >
 > **Antes de repetir un error ya conocido:** [`../../DocumentacionProyecto/Bridge/`](../../DocumentacionProyecto/Bridge/).
 
-Última actualización: **2026-09-11** (Fase 5a — cimientos de interfaz: login, sesión, panel protegido)
+Última actualización: **2026-09-11** (vínculo recurso↔cuenta — `resources.user_id`, `GET /me/schedule`)
 
 ---
 
 ## 1. Dónde estamos
 
-**Fases 0 a 4 completas y verificadas + Fase 5a.** Backend completo (motor, identidad, permisos
-por calendario, API de agenda, colchón entre sucursales) y ahora un **frontend real que se
-autentica de verdad contra esa API** — login de 2 pantallas, sesión por cookies, panel protegido
+**Fases 0 a 4 completas y verificadas + Fase 5a + vínculo recurso↔cuenta.** Backend completo
+(motor, identidad, permisos por calendario, API de agenda, colchón entre sucursales, y ahora el
+vínculo opcional recurso↔cuenta que deja a un recurso ver su propia agenda con `GET
+/me/schedule`) y un **frontend real que se autentica de verdad contra esa API** — login de 2 pantallas, sesión por cookies, panel protegido
 con selector de sucursal. **Sin herramienta de navegador en esta sesión** — lo verificable por
 HTTP/build se verificó de verdad; la calidad visual/animación real la confirma el dueño al abrir
 `http://localhost:3061` (mismo criterio ya aplicado en el proyecto `gallery`).
@@ -31,7 +32,7 @@ Estructura real en disco:
 | `docker-compose.yml` | ✅ 4 servicios (db 5439 · redis 6384 · backend 3060 · frontend 3061). Contexto de build del backend = raíz del repo (para incluir `omniagenda_core`) |
 | `.env.example` / `.env` | ✅ `.env` local con contraseñas de prueba (gitignored) |
 | `omniagenda_core/` | ✅ **v0.2.0** — CommonJS; `ResourceBooking`/`ConflictCandidate` con `calendarId` y `crossCalendarBufferMinutes` (colchón entre calendarios, conflicto DURO). **63 pruebas** `node:test` + `tsx` |
-| `omniagenda_backend/` | ✅ 13 modelos, 4 migraciones; `auth`/`two-factor`/`roles`/`users`/`security-events`/`mail`/`calendar-access` (fail-closed) + `resources`/`calendars`/`schedule-rules`/`time-off`/`bookings` (escritor único)/`availability`. **43 pruebas Jest** + `auth-sweep.sh` (27) + `agenda-e2e.sh` (19) + `checks/` de Fase 2 |
+| `omniagenda_backend/` | ✅ 14 modelos, 5 migraciones; `auth`/`two-factor`/`roles`/`users`/`security-events`/`mail`/`calendar-access` (fail-closed) + `resources`/`calendars`/`schedule-rules`/`time-off`/`bookings` (escritor único)/`availability`/`me` (vínculo recurso↔cuenta, `GET /me/schedule`). **51 pruebas Jest** + `auth-sweep.sh` (27) + `agenda-e2e.sh` (23) + `checks/` de Fase 2 |
 | `omniagenda_frontend/` | ✅ **Fase 5a (nuevo)** — Next.js 16.3.1 + React 19.2.4 + Tailwind 4 + CSS propio (`globals.css`: tokens + animaciones `transform`/`opacity`, `prefers-reduced-motion` respetado). `lib/server-fetch.ts` + `lib/client-api.ts` (cliente de API real, 2 mitades) · `proxy.ts` (protección de `/agenda/*`) · `/login` (2 pantallas: credenciales + 2FA si aplica) · `/agenda` (protegido: sesión real + selector de sucursal `?cal=` + próximas reservas reales) · `/estado` (el diagnóstico de la Fase 0, reubicado) · `/` (landing pública mínima) |
 
 **Verificación Fase 5a (2026-09-11) — todo lo verificable sin navegador:**
@@ -103,6 +104,19 @@ opcional, uno por par recurso-calendario) · `time_off` (rango de días, `CHECK 
 - Corregido un bug en los propios scripts de verificación: el flush de Redis no limpiaba nada
   (patrón que no coincidía con las llaves reales del throttler) → `FLUSHDB`.
 
+**Verificación vínculo recurso↔cuenta (2026-09-11), reinicio limpio TOTAL (`down -v` + `--build`):**
+- Migración `20260911141304_link_resource_to_user_account` (`resources.user_id String? @unique`,
+  `onDelete: SetNull`) aplica limpio desde cero.
+- Seed (parte 4) vincula `estilista+omniagenda@example.com` al recurso estilista sembrado.
+- `PATCH /resources/:id { user_id }` valida: cuenta inexistente → 404; cuenta ya vinculada a otro
+  recurso → 409 (vía `@unique` de Postgres); `null` desvincula.
+- `GET /me/schedule` (nuevo, sin `@Roles`/`@CalendarRole` — cualquier cuenta puede preguntar por SU
+  PROPIA agenda): estilista vinculado → ve su reserva real combinando las 2 sucursales; cuenta sin
+  vínculo → 404 con mensaje claro; sin `from`/`to` → 400.
+- **51/51 pruebas Jest** (+8: `resources.service.test.ts` y `me.service.test.ts` nuevos),
+  **`agenda-e2e.sh` 23/23** (+4, `/me/schedule` real), `auth-sweep.sh` 27/27, checks de Fase 2 y
+  núcleo (63/63) sin regresión.
+
 **Lo que NO existe todavía (a propósito, por fase):** frontend de login/agenda (Fase 5) · cron /
 correo real / `.ics` (Fase 6) · Stripe (Fase 7) · servicios de documentación en el compose
 (Fase 8) · negocio de demostración concreto para la Fase 9. `RESEND_API_KEY` es un placeholder —
@@ -158,11 +172,11 @@ cd .. && cp .env.example .env          # solo la 1ª vez; rellena las contraseñ
 docker compose up -d --build           # migra + siembra; frontend :3061 · api :3060
 # En el navegador: http://localhost:3061  ->  "Entrar al panel"  ->  login con una cuenta sembrada
 # Pruebas y comprobaciones (con el stack arriba):
-docker compose exec -T omniagenda_backend npm test              # 43 pruebas Jest
+docker compose exec -T omniagenda_backend npm test              # 51 pruebas Jest
 docker compose exec -T omniagenda_backend npm run build         # typecheck completo backend
 docker compose exec -T omniagenda_frontend sh -lc "NODE_ENV=production npx next build"  # build frontend
 bash omniagenda_backend/test/auth-sweep.sh                       # 27 casos de control de acceso
-bash omniagenda_backend/test/agenda-e2e.sh                       # 19 casos de la API de agenda
+bash omniagenda_backend/test/agenda-e2e.sh                       # 23 casos de la API de agenda
 docker compose exec -T omniagenda_db psql -U omniagenda_user -d omniagenda_db \
   -v ON_ERROR_STOP=1 -f - < omniagenda_backend/prisma/checks/double_booking.sql
 node omniagenda_backend/prisma/checks/status-sync.mjs
@@ -171,7 +185,9 @@ docker compose down                    # detener (los datos de Postgres persiste
 
 Cuentas de prueba sembradas: `<rol>+omniagenda@example.com` (rol ∈ super/director/admin/manager/
 staff/usuario), contraseña `TestOnly123!`. `staff` es `manager` de **ambas** sucursales; `usuario`
-es `booker` de Centro.
+es `booker` de Centro. Cuenta extra `estilista+omniagenda@example.com` (rol `usuario`, misma
+contraseña) — vinculada al recurso estilista del seed (`resources.user_id`): al entrar ve su
+propia agenda combinada de las 2 sucursales en `GET /me/schedule`.
 
 ---
 
@@ -189,6 +205,7 @@ otras cuatro de esa lista se pueden seguir respondiendo mientras tanto.
 
 | Fecha | Cambio |
 |---|---|
+| 2026-09-11 | **Vínculo opcional recurso↔cuenta (`resources.user_id`) + `GET /me/schedule` — construido y verificado en vivo.** Surgió de una pregunta directa del dueño al ver el login real de la Fase 5a: "¿y habría rol para el estilista?". La respuesta correcta no es un rol nuevo (RBAC contesta "qué puede hacer esta cuenta", no "qué recurso ES esta cuenta") sino un vínculo 1-a-1 opcional, **ortogonal al RBAC** — generaliza `artists.user_id` de Espiral, sin nombre de negocio. `resources.user_id String? @unique @db.Uuid` con `onDelete: SetNull` (migración `20260911141304_link_resource_to_user_account`): borrar la cuenta de login nunca borra el recurso ni su historial. `PATCH /resources/:id { user_id }` (mismo endpoint que ya editaba el recurso, sin ruta nueva) valida cuenta inexistente (404) y cuenta ya vinculada a otro recurso (409, vía el `@unique` de Postgres traducido del `P2002`); `user_id: null` desvincula. Módulo nuevo `me/` — `GET /me/schedule` sin `@Roles`/`@CalendarRole`: cualquier cuenta autenticada pregunta por SU PROPIA agenda, ancorada siempre en `caller.userId` del JWT (cero riesgo de IDOR, ningún id de ruta manipulable), cruzando TODOS los calendarios donde el recurso vinculado trabaja — un estilista de 2 sucursales ve su agenda combinada sin necesitar membresía manual en ninguna; sin vínculo → 404 con mensaje claro, nunca una lista vacía disfrazada. Seed: 7ª cuenta de prueba `estilista+omniagenda@example.com` (rol `usuario` a propósito), vinculada al recurso estilista sembrado. **Verificado con reinicio limpio TOTAL** (`down -v` + `--build`): migración desde cero, seed idempotente, login real como estilista → agenda combinada real; login como `usuario` sin vínculo → 404; conflicto/404/desvincular/re-vincular por `PATCH` — todos correctos por curl. **51/51 pruebas Jest** (+8: `resources.service.test.ts`, `me.service.test.ts` nuevos), **`agenda-e2e.sh` 23/23** (+4), `auth-sweep.sh` 27/27, checks de Fase 2 y núcleo (63/63) sin regresión. Documentado en `DOCUMENTO_VIVO_ARQUITECTURA.md` §13. **Fase 5b sigue bloqueada** — este trabajo es backend puro, no toca el frontend ni resuelve la confirmación visual pendiente. |
 | 2026-09-11 | **Fase 5a (cimientos de interfaz) — construida y verificada, con un límite explícito.** Primer código real de `omniagenda_frontend` desde la Fase 0. `lib/server-fetch.ts` (Server Components, reenvía cookies httpOnly hacia `INTERNAL_API_URL`, un 401 real es la única fuente de verdad de "no hay sesión") + `lib/client-api.ts` (Client Components, habla al backend por `NEXT_PUBLIC_API_URL` con `credentials:'include'`) — dos mitades del cliente de API, escritas desde cero. `proxy.ts` (Next 16 renombró `middleware.ts`): protege `/agenda/*`, saca de `/login` a quien ya tiene sesión — chequeo optimista de cookie, la autorización real la sigue haciendo el backend. `/login`: 2 pantallas reales (credenciales → 2FA solo si `requiresTwoFactor:true`, el formulario reacciona a la API). `/agenda`: protegido, trae `/auth/me` + `/calendars` reales, `BranchSwitcher` (`?cal=` en la URL, nunca solo estado de React — el vertical es multisucursal) y lista las reservas reales de los próximos 7 días. `/estado` (el diagnóstico de la Fase 0, reubicado) y `/` (landing pública mínima) nuevos. **Lenguaje visual propio en `globals.css`**: tokens de color/duración/easing, 3 animaciones (`oa-rise-in`/`oa-shake`/`oa-spin`) solo con `transform`/`opacity`, todas con versión sin movimiento bajo `prefers-reduced-motion` — cero librería de animación, cero código de terceros. **Un dato real de por qué esto funciona**: backend y frontend comparten el hostname `localhost` en dev — las cookies ignoran el puerto, así que una cookie que puso el backend en `:3060` viaja igual cuando el navegador visita `:3061`; verificado con curl usando el mismo cookie-jar contra los dos puertos. **Límite declarado explícito**: sin herramienta de navegador en esta sesión — no se verificó la calidad visual/animación real ni que el DOM del paso de 2FA se revele bien (mismo criterio ya aplicado en `gallery`). **Verificado (todo lo que SÍ se puede sin navegador)**: `next build` producción compila limpio (0 errores TS, rutas clasificadas correctamente); `GET /agenda` sin cookie → 307 a `/login`; login real por curl (cuenta sembrada) contra el backend → esas cookies contra el frontend → `GET /agenda` → 200 con la cuenta real, las 2 sucursales reales y las reservas reales en el HTML; `GET /login` con sesión → 307 a `/agenda`; `POST /auth/logout` real → `/agenda` vuelve a bloquear. **Pendiente: Fase 5b** (las 5 vistas de calendario + arrastrar y soltar) — bloqueada hasta que el dueño confirme visualmente que 5a se ve y se siente bien. |
 | 2026-09-11 | **Negocio de demostración decidido (estética multisucursal) + colchón entre calendarios construido.** El dueño preguntó cuál candidato (restaurante vs. estética, ambos multisucursal) da un caso de estudio más completo. Análisis contra el código real: el restaurante ejercitaría capacidad que la Fase 4 **ya construyó** (multi-recurso, transacción atómica); la estética exige que el motor **crezca** una capacidad nueva — un recurso (estilista) que trabaja en 2 sucursales, con un colchón de traslado entre ellas. **Decisión: estética multisucursal**; restaurante multisucursal queda anotado como caso de estudio futuro, no descartado. Construido en el acto: `resources.calendar_switch_buffer_minutes` (migración `20260911012816`, `CHECK >= 0`) generaliza `artists.location_change_buffer_minutes` de Espiral — a diferencia del colchón general (preferencia, conflicto BLANDO), este es una imposibilidad física y se reporta como conflicto **DURO**. `omniagenda_core`: `ResourceBooking`/`ConflictCandidate` ganaron `calendarId` + `crossCalendarBufferMinutes` (cambio incompatible de tipos → **v0.2.0**). `BookingsService.preflightConflict` calcula el valor efectivo como el máximo entre los recursos de la reserva. Seed actualizado: **2 sucursales** (Centro L–Sáb, Norte mar/jue) con el estilista de demo atendiendo en ambas, colchón de 45 min. **Verificado con reinicio limpio TOTAL**: núcleo **63/63** (+6), Jest **43/43** (+3), `agenda-e2e.sh` **19/19** (+3, contra el seed real: 15 min entre sucursales → 409, 45 min → 201), `auth-sweep.sh` 27/27, checks de Fase 2 verdes. |
 | 2026-09-11 | **Fase 4 (API de agenda) — completa y verificada en vivo.** Se cableó `@omniagenda/core` al backend en runtime (pendiente desde Fase 2): contexto de build del backend pasó a la raíz del repo, `Dockerfile.dev` copia y construye el núcleo como paso previo (`file:../omniagenda_core`, symlink en `node_modules`). **Cambio real al núcleo que esto forzó**: dejó de ser `"type":"module"` (ESM) — ahora **CommonJS** — para que NestJS y Jest lo importen con `require()` sin gimnasia de ESM; las 57 pruebas del núcleo no se afectaron. 6 módulos nuevos: `resources` (CRUD, rol global), `calendars` (crear → el creador queda `manager`; listar según membresía/visibilidad/admin), `schedule-rules` (horario semanal por recurso-calendario), `time-off` (ausencias de calendario o de recurso), `bookings` — **el escritor único** de `bookings`+`booking_resources`, con dos capas de defensa: `evaluateConflict` del núcleo como pre-chequeo (mensaje claro) + la `EXCLUDE` de PostgreSQL dentro de `$transaction` como backstop real contra condiciones de carrera (rollback sin fila huérfana); multi-recurso atómico; mover/cancelar reescriben el espejo. `availability` — `computeAvailability` del núcleo sobre horario+ausencias+ocupado+colchón. Todo gateado por `@CalendarRole`+`CalendarAccessGuard` (o rol global donde el recurso es del sistema). La disponibilidad sigue siendo un dato personal: un `busy_only` visto sin membresía real oculta título/creador/origen. **Verificado con reinicio limpio TOTAL** (`down -v` + `--build`): `require('@omniagenda/core')` funciona en el contenedor, `nest build` 0 errores, **40 pruebas Jest** (7 archivos, +`bookings.service.test.ts`), **`agenda-e2e.sh` nuevo, 16/16 PASS** por HTTP real — el caso central: **doble-reserva por la API real → `409`**; adyacentes conviven; multi-recurso atómico; mover/cancelar liberan horario; disponibilidad real; permisos por calendario respetados. Las suites de Fases 2 y 3 siguen verdes. **Bug corregido en los propios scripts de prueba**: el flush de Redis no limpiaba nada (patrón equivocado) → `FLUSHDB`. |

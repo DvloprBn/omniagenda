@@ -22,6 +22,7 @@ import { ScheduleRulesModule } from './schedule-rules/schedule-rules.module';
 import { TimeOffModule } from './time-off/time-off.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { AvailabilityModule } from './availability/availability.module';
+import { MeModule } from './me/me.module';
 
 /**
  * FASE 3 — auth portada de OmniUser + permisos por calendario, modelo
@@ -62,6 +63,8 @@ import { AvailabilityModule } from './availability/availability.module';
     TimeOffModule,
     BookingsModule,
     AvailabilityModule,
+    // Vinculo opcional recurso<->cuenta (generaliza artists.user_id de Espiral).
+    MeModule,
   ],
   controllers: [AppController],
   providers: [

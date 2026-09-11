@@ -2,9 +2,10 @@
 // dato real de nadie). Idempotente: ids fijos + upsert, se corre muchas
 // veces sin duplicar.
 //
-// Tres partes:
-//   1. Auth (portado de OmniUser): 6 roles del sistema + 6 cuentas de
-//      prueba, una por rol, contrasena compartida SOLO de prueba.
+// Cuatro partes:
+//   1. Auth (portado de OmniUser): 6 roles del sistema + 7 cuentas de
+//      prueba (una por rol, mas una extra), contrasena compartida SOLO
+//      de prueba.
 //   2. Demo del motor: 2 calendarios (vertical elegido — PLAN_DESARROLLO.md
 //      §11 — estetica MULTISUCURSAL, ficticia), recursos, horarios,
 //      1 reserva, y membresias de calendario (Fase 3).
@@ -12,6 +13,10 @@
 //      tiene un colchon de traslado configurado (Fase 4, generalizacion de
 //      `location_change_buffer_minutes` de Espiral — ver
 //      DOCUMENTO_VIVO_ARQUITECTURA.md §11).
+//   4. Esa MISMA cuenta estilista queda VINCULADA al recurso estilista
+//      (`resources.user_id`, generaliza `artists.user_id` de Espiral) —
+//      asi puede ver su propia agenda con GET /me/schedule, combinada de
+//      las 2 sucursales, sin que nadie le de membresia manual en ninguna.
 import { PrismaClient } from '../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcryptjs';
@@ -37,13 +42,21 @@ const ROLES = [
   { name: 'super', description: 'Control tecnico total del proyecto — un solo cargo real', is_system: true, level: 5, max_count: 1 },
 ] as const;
 
+// `key` distingue cuentas del mismo rol (dos cuentas pueden ser "usuario"
+// — la generica y la del estilista — y necesitan cada una su propio id
+// real, `key` es lo que evita que una sobrescriba a la otra al armar el
+// mapa de abajo).
 const TEST_ACCOUNTS = [
-  { email: 'super+omniagenda@example.com', role: 'super' },
-  { email: 'director+omniagenda@example.com', role: 'director' },
-  { email: 'admin+omniagenda@example.com', role: 'admin' },
-  { email: 'manager+omniagenda@example.com', role: 'manager' },
-  { email: 'staff+omniagenda@example.com', role: 'staff' },
-  { email: 'usuario+omniagenda@example.com', role: 'usuario' },
+  { key: 'super', email: 'super+omniagenda@example.com', role: 'super' },
+  { key: 'director', email: 'director+omniagenda@example.com', role: 'director' },
+  { key: 'admin', email: 'admin+omniagenda@example.com', role: 'admin' },
+  { key: 'manager', email: 'manager+omniagenda@example.com', role: 'manager' },
+  { key: 'staff', email: 'staff+omniagenda@example.com', role: 'staff' },
+  { key: 'usuario', email: 'usuario+omniagenda@example.com', role: 'usuario' },
+  // Rol "usuario" a proposito — el vinculo recurso<->cuenta es ORTOGONAL
+  // al RBAC (PLAN_DESARROLLO.md/DOCUMENTO_VIVO_ARQUITECTURA.md §13): no
+  // hace falta un rol especial para que una cuenta represente un recurso.
+  { key: 'estilista', email: 'estilista+omniagenda@example.com', role: 'usuario' },
 ] as const;
 
 // ─────────────────────────── 2. DEMO ───────────────────────────
@@ -78,7 +91,7 @@ async function main() {
 
   console.log('Sembrando cuentas de prueba...');
   const testPasswordHash = await bcrypt.hash(TEST_PASSWORD, 12);
-  const userIdByRole = new Map<string, string>();
+  const userIdByKey = new Map<string, string>();
   for (const acc of TEST_ACCOUNTS) {
     const user = await prisma.users.upsert({
       where: { email: acc.email },
@@ -86,11 +99,11 @@ async function main() {
       create: {
         email: acc.email,
         password_hash: testPasswordHash,
-        name: `Cuenta de prueba (${acc.role})`,
+        name: `Cuenta de prueba (${acc.key})`,
         role_id: roleByName.get(acc.role)!,
       },
     });
-    userIdByRole.set(acc.role, user.user_id);
+    userIdByKey.set(acc.key, user.user_id);
   }
   console.log(`  ${TEST_ACCOUNTS.length} cuentas (password compartida: ${TEST_PASSWORD})`);
 
@@ -130,6 +143,16 @@ async function main() {
     create: { resource_id: R_ESTILISTA, calendar_id: CAL_NORTE, weekly_hours: martesJueves },
   });
 
+  console.log('Vinculando la cuenta "estilista" al recurso estilista (resources.user_id)...');
+  // Generaliza artists.user_id de Espiral: el recurso sigue siendo la
+  // ficha real (horario, colchon); la cuenta es solo la credencial. Con
+  // esto, GET /me/schedule le muestra su agenda combinada de las 2
+  // sucursales sin necesitar membresia de calendario en ninguna.
+  const estilistaUserId = userIdByKey.get('estilista');
+  if (estilistaUserId) {
+    await prisma.resources.update({ where: { resource_id: R_ESTILISTA }, data: { user_id: estilistaUserId } });
+  }
+
   console.log('Sembrando una reserva de ejemplo (estilista + estacion, 1 h)...');
   const start = new Date('2026-12-15T16:00:00.000Z'); // 10:00 CST
   const end = new Date('2026-12-15T17:00:00.000Z');
@@ -143,7 +166,7 @@ async function main() {
         status: 'confirmada',
         source_type: 'demo',
         source_id: 'seed-1',
-        created_by: userIdByRole.get('manager') ?? null,
+        created_by: userIdByKey.get('manager') ?? null,
         starts_at: start,
         ends_at: end,
         booking_resources: {
@@ -167,7 +190,7 @@ async function main() {
     ['usuario', CAL, 'booker'],
   ];
   for (const [role, calId, calRole] of membershipSeed) {
-    const uid = userIdByRole.get(role);
+    const uid = userIdByKey.get(role);
     if (!uid) continue;
     await prisma.calendar_members.upsert({
       where: { calendar_id_user_id: { calendar_id: calId, user_id: uid } },

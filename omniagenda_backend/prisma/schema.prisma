@@ -49,9 +49,21 @@ model resources {
   /// evalua como conflicto DURO en `evaluateConflict`, a diferencia del
   /// colchon general (preferencia, blando). Ver DOCUMENTO_VIVO_ARQUITECTURA.md §11.
   calendar_switch_buffer_minutes Int @default(0)
+  /// Vínculo OPCIONAL a una cuenta real — generaliza `artists.user_id` de
+  /// Espiral ("la mayoría de artistas siguen sin cuenta... pero ahora se
+  /// les puede dar acceso limitado... sin duplicar sus datos de perfil").
+  /// El recurso sigue siendo la ficha real (nombre, horario, colchón); la
+  /// cuenta es solo la credencial — nunca al revés. `@unique`: una cuenta
+  /// no puede representar dos recursos. `onDelete: SetNull` — borrar la
+  /// cuenta de login NUNCA borra el recurso ni su historial de reservas.
+  /// No exige ningún rol global concreto: cualquier cuenta autenticada
+  /// vinculada ve SU PROPIA agenda vía `GET /me/schedule`, sin importar
+  /// su nivel de jerarquía — es ortogonal al RBAC, no un rol más.
+  user_id     String?  @unique @db.Uuid
   created_at  DateTime @default(now()) @db.Timestamptz(6)
   updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
+  users             users?              @relation(fields: [user_id], references: [user_id], onDelete: SetNull, onUpdate: NoAction)
   schedule_rules    schedule_rules[]
   time_off          time_off[]
   booking_resources booking_resources[]
@@ -257,6 +269,10 @@ model users {
   totp_recovery_codes   totp_recovery_codes[]
   password_reset_tokens password_reset_tokens[]
   calendar_members      calendar_members[]
+  /// La ficha de recurso agendable que esta cuenta representa, si acaso
+  /// (ej. un estilista) — opcional, `null` para la mayoría de las
+  /// cuentas (staff administrativo sin agenda propia).
+  resources             resources?
 }
 
 /// Sesión real — NO es un JWT. Valor aleatorio de alta entropía; solo su

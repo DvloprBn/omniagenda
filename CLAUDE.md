@@ -9,7 +9,9 @@
 > decidido (2026-09-11): estética multisucursal** — ver `DOCUMENTO_VIVO_ARQUITECTURA.md` §11.
 > **Fase 5a (login + sesión + panel protegido) hecha** — ver §12 del mismo documento; **sin
 > navegador en esta sesión**, el dueño confirma visualmente antes de seguir con la Fase 5b (las 5
-> vistas de calendario + arrastrar y soltar).
+> vistas de calendario + arrastrar y soltar). **Vínculo opcional recurso↔cuenta
+> (`resources.user_id`) + `GET /me/schedule` hecho (2026-09-11)** — ver §13; trabajo de backend
+> puro, no depende de esa confirmación visual pendiente.
 
 **Motor de agenda replicable + aplicación real que lo demuestra.** El núcleo (`omniagenda_core`)
 es lo que después sirve de base para construir agendas de negocio reales: reservación de

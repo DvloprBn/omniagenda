@@ -4,9 +4,9 @@
 > aprendió. La estrategia vive en [`PLAN_DESARROLLO.md`](./PLAN_DESARROLLO.md); el día a día en
 > [`ESTADO_PROYECTO.md`](./ESTADO_PROYECTO.md).
 >
-> **v0.6 — 2026-09-11.** Cada sección lleva su estado: qué está implementado y verificado en
-> vivo (Fases 0–4, el negocio de demostración decidido en §11, y los cimientos de interfaz en
-> §12) y qué sigue siendo diseño previo al código (Fase 5b+).
+> **v0.7 — 2026-09-11.** Cada sección lleva su estado: qué está implementado y verificado en
+> vivo (Fases 0–4, el negocio de demostración decidido en §11, los cimientos de interfaz en §12,
+> y el vínculo recurso↔cuenta en §13) y qué sigue siendo diseño previo al código (Fase 5b+).
 
 ---
 
@@ -622,3 +622,87 @@ entrante) encuentre la sesión real sin ningún paso extra. Mismo patrón que ya
 Las 5 vistas de calendario (día/semana/mes/agenda/línea de tiempo) + arrastrar y soltar. Esta es
 la parte que de verdad demuestra "animación de grado profesional" — 5a solo construyó el piso
 sobre el que se para.
+
+---
+
+## §13. Vínculo opcional recurso↔cuenta (`resources.user_id`)
+
+**Decidido: 2026-09-11 · Estado: implementado y verificado en vivo (curl + Jest + rebuild
+limpio).**
+
+### El problema real: ¿el estilista puede entrar y ver SU agenda?
+
+Surgió de una pregunta directa del dueño ("¿y habría rol para el estilista?") al ver el login
+real de la Fase 5a. La respuesta correcta **no** es un rol nuevo — RBAC (`roles.level`) contesta
+"¿qué puede hacer esta cuenta en el sistema?", una pregunta totalmente distinta a "¿qué recurso
+agendable ES esta cuenta?". Mezclar las dos habría obligado a inventar un rol "estilista" que no
+aporta ningún permiso real, solo una etiqueta.
+
+### La decisión: un vínculo 1-a-1, opcional, ortogonal al RBAC
+
+Generaliza `artists.user_id` de Espiral (ahí, una cuenta *artista* apuntaba a su fila en
+`artists`). Aquí el mismo patrón se separa de cualquier nombre de negocio:
+
+```prisma
+model resources {
+  // ...
+  user_id String? @unique @db.Uuid
+  users   users?  @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
+}
+```
+
+- **`String?`** — la gran mayoría de recursos (salas, estaciones, equipo) nunca tienen cuenta de
+  login. Vincular es la excepción, no la regla.
+- **`@unique`** — una cuenta representa como máximo UN recurso. Sin esto, dos recursos podrían
+  reclamar la misma cuenta y `GET /me/schedule` no sabría cuál devolver.
+- **`onDelete: SetNull`** — borrar la cuenta de login (ej. el estilista deja la empresa) **nunca**
+  borra el recurso ni su historial de reservas. El recurso simplemente queda sin cuenta vinculada,
+  tal como nace cualquier recurso nuevo.
+- **Sin rol especial**: cualquier cuenta autenticada, del nivel que sea, puede representar un
+  recurso. El vínculo lo crea un manager vía `PATCH /resources/:id { user_id }` — la misma ruta
+  que ya existía para editar el recurso, sin endpoint nuevo.
+
+### `GET /me/schedule` — la vista personal, sin riesgo de IDOR
+
+`MeService.schedule(userId, from, to)` ancla la consulta SIEMPRE en `caller.userId` (extraído del
+JWT), nunca en un parámetro de ruta — no existe ningún id manipulable por el cliente para pedir la
+agenda de otro recurso. Si la cuenta no representa ningún recurso, responde **404** con un mensaje
+que explica el porqué, nunca una lista vacía disfrazada de "no tienes nada" (mismo criterio de
+"fail-closed con mensaje claro" que ya rige el resto de la Fase 3).
+
+La consulta cruza **todos los calendarios** donde ese recurso tiene reservas — un estilista de 2
+sucursales ve su agenda combinada con una sola cuenta, sin que nadie tenga que darle membresía de
+calendario (`calendar_members`) en ninguna de las dos. Eso es lo que hace este vínculo
+genuinamente distinto de `BookingsService.list` (acotado a un calendario, gateado por
+`@CalendarRole`): resuelve "¿qué tengo yo, en cualquier lugar donde trabajo?", no "¿qué hay en
+este calendario?".
+
+### Validaciones reales en `ResourcesService.update`
+
+- Vincular a una cuenta que no existe → **404** ("La cuenta a vincular no existe").
+- Vincular a una cuenta que YA representa otro recurso → el `@unique` de Postgres dispara
+  `P2002`, capturado y traducido a **409** ("Esa cuenta ya está vinculada a otro recurso") — la
+  base de datos garantiza la unicidad, el servicio solo la traduce a un error legible, mismo
+  patrón que el `EXCLUDE` de reservas.
+- `user_id: null` desvincula explícitamente; `class-validator` con `@IsOptional()` ya trata `null`
+  como "sin más validación" antes de llegar al `@IsUUID('4')`.
+
+### Verificado en vivo (2026-09-11, rebuild limpio desde cero)
+
+- Migración `20260911141304_link_resource_to_user_account` aplica limpio sobre una base de datos
+  recién creada (`docker compose down -v` + `up --build` + `migrate deploy`).
+- Seed (`prisma/seed.ts`, parte 4) vincula la cuenta `estilista+omniagenda@example.com` al recurso
+  estilista sembrado, sin fallar en una corrida repetida (idempotente).
+- Login real como `estilista` → `GET /me/schedule?from=...&to=...` → devuelve la reserva sembrada
+  real, con el nombre correcto del calendario.
+- Login real como `usuario` (sin recurso vinculado) → `GET /me/schedule` → **404** con el mensaje
+  esperado.
+- `PATCH /resources/:id` con un `user_id` ya vinculado a otro recurso → **409**; con un `user_id`
+  inexistente → **404**; con `null` (desvincular) y luego con el id real de nuevo (re-vincular) →
+  **200** en ambos.
+- Jest: `test/resources.service.test.ts` (5 casos: vincular, conflicto por duplicado, 404 por
+  cuenta inexistente, desvincular+re-vincular, `SetNull` real al borrar la cuenta) y
+  `test/me.service.test.ts` (3 casos: 404 sin vínculo, agenda combinada de 2 calendarios reales,
+  filtro correcto de rango `[from, to)`) — **51/51 tests del backend en verde**.
+- `test/agenda-e2e.sh` §6.6 (4 casos nuevos contra el stack real) y `test/auth-sweep.sh` (27
+  casos) sin regresión.

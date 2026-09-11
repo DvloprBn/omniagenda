@@ -88,6 +88,19 @@ for bid in $(curl -s -b "$JADMIN" "$API/calendars/$CAL_NORTE/bookings?from=2026-
 done
 
 echo
+echo "== 6.6. GET /me/schedule (vínculo recurso<->cuenta, resources.user_id) =="
+JEST=$(mktemp); trap 'rm -f "$JEST"' EXIT
+curl -s -c "$JEST" -X POST -H 'content-type: application/json' --data-raw '{"email":"estilista+omniagenda@example.com","password":"TestOnly123!"}' "$API/auth/login/step2" -o /dev/null
+ME=$(curl -s -b "$JEST" "$API/me/schedule?from=2026-12-01T00:00:00Z&to=2026-12-31T00:00:00Z")
+check "estilista (vinculado) ve su recurso" 36 "$(echo "$ME" | jqget "['resource']['resource_id']" | tr -d '\n' | wc -c)"
+check "estilista ve la reserva sembrada (Corte y peinado)" "yes" "$(echo "$ME" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+print('yes' if any(b['title']=='Corte y peinado (demo)' for b in d['bookings']) else 'no')")"
+check "usuario (SIN recurso vinculado) -> GET /me/schedule 404" 404 "$(code -b "$JUSER" "$API/me/schedule?from=2026-12-01T00:00:00Z&to=2026-12-31T00:00:00Z")"
+check "GET /me/schedule sin from/to -> 400" 400 "$(code -b "$JEST" "$API/me/schedule")"
+
+echo
 echo "== 7. limpieza =="
 # borrar reservas del calendario E2E y luego el calendario
 for bid in $(curl -s -b "$JADMIN" "$API/calendars/$CID/bookings?from=2026-01-01T00:00:00Z&to=2027-01-01T00:00:00Z" | python3 -c "import sys,json;[print(b['booking_id']) for b in json.load(sys.stdin)]"); do
