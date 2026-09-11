@@ -1,14 +1,17 @@
 // Siembra de DESARROLLO — datos FICTICIOS (este repo es publico: nunca un
 // dato real de nadie). Idempotente: ids fijos + upsert, se corre muchas
-// veces sin duplicar.
+// veces sin duplicar. Se deja crecer con el tiempo (mas datos de
+// demostracion) en vez de borrarse antes de cada entrega — el dueño pidio
+// explicitamente que esta siembra se quede tal cual hasta produccion, para
+// poder revisar cada funcionalidad con datos reales de un vistazo.
 //
-// Cuatro partes:
+// Cinco partes:
 //   1. Auth (portado de OmniUser): 6 roles del sistema + 7 cuentas de
 //      prueba (una por rol, mas una extra), contrasena compartida SOLO
 //      de prueba.
 //   2. Demo del motor: 2 calendarios (vertical elegido — PLAN_DESARROLLO.md
 //      §11 — estetica MULTISUCURSAL, ficticia), recursos, horarios,
-//      1 reserva, y membresias de calendario (Fase 3).
+//      y membresias de calendario (Fase 3).
 //   3. El estilista trabaja en AMBAS sucursales con horarios distintos y
 //      tiene un colchon de traslado configurado (Fase 4, generalizacion de
 //      `location_change_buffer_minutes` de Espiral — ver
@@ -17,6 +20,11 @@
 //      (`resources.user_id`, generaliza `artists.user_id` de Espiral) —
 //      asi puede ver su propia agenda con GET /me/schedule, combinada de
 //      las 2 sucursales, sin que nadie le de membresia manual en ninguna.
+//   5. Reservas de demostracion: la original (fija, 2026-12-15, la que
+//      usan los scripts de prueba) MAS un lote fechado alrededor del
+//      2026-09-11 (cuando se sembro este lote) — para que la Fase 5b
+//      (vistas de calendario) tenga contenido real que revisar al abrir
+//      el panel sin tener que navegar 3 meses al futuro.
 import { PrismaClient } from '../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcryptjs';
@@ -75,6 +83,50 @@ const semanaLaboral = { mon: L_A_V, tue: L_A_V, wed: L_A_V, thu: L_A_V, fri: L_A
 // dia en Norte son un caso real de "cambio de sucursal", no un choque de
 // horario trivial).
 const martesJueves = { mon: null, tue: L_A_V, wed: null, thu: L_A_V, fri: null, sat: null, sun: null };
+
+/**
+ * Reservas de demostracion visual — fechas FIJAS alrededor del
+ * 2026-09-11 (cuando se escribio este lote), a proposito NO relativas a
+ * "hoy" en tiempo de ejecucion: el dueño pidio que esta siembra se quede
+ * tal cual hasta produccion, no que se recalcule cada vez que se vuelve a
+ * sembrar. Cubre 2 semanas, las 2 sucursales, los 3 recursos y los 4
+ * estados reales, para poder revisar cada vista de calendario (Fase 5b)
+ * con contenido real sin tener que navegar meses al futuro hasta la
+ * reserva de ejemplo original (2026-12-15).
+ *
+ * El estilista SOLO aparece en Centro lunes/miercoles/viernes/sabado y en
+ * Norte martes/jueves — coherente con `schedule_rules` de arriba, nunca
+ * el mismo dia en las 2 sucursales (ese caso ya lo prueba el colchon
+ * entre calendarios en `agenda-e2e.sh` §6.5, no hace falta repetirlo aqui
+ * con datos de demostracion visual).
+ */
+const DEMO_BOOKINGS: Array<{
+  id: string;
+  calendarId: string;
+  resourceIds: string[];
+  title: string;
+  status: 'confirmada' | 'pendiente' | 'cancelada' | 'completada';
+  start: Date;
+  end: Date;
+}> = [
+  { id: '00000000-0000-4000-8000-0000000000b2', calendarId: CAL, resourceIds: [R_ESTILISTA], title: 'Corte y barba (demo)', status: 'confirmada', start: new Date('2026-09-07T16:00:00.000Z'), end: new Date('2026-09-07T17:00:00.000Z') },
+  { id: '00000000-0000-4000-8000-0000000000b3', calendarId: CAL, resourceIds: [R_MANICURISTA], title: 'Manicure gel (demo)', status: 'confirmada', start: new Date('2026-09-07T17:30:00.000Z'), end: new Date('2026-09-07T18:15:00.000Z') },
+  { id: '00000000-0000-4000-8000-0000000000b4', calendarId: CAL_NORTE, resourceIds: [R_ESTILISTA], title: 'Corte (Sucursal Norte, demo)', status: 'confirmada', start: new Date('2026-09-08T16:00:00.000Z'), end: new Date('2026-09-08T17:00:00.000Z') },
+  { id: '00000000-0000-4000-8000-0000000000b5', calendarId: CAL, resourceIds: [R_ESTILISTA, R_ESTACION], title: 'Coloración (demo)', status: 'pendiente', start: new Date('2026-09-09T18:00:00.000Z'), end: new Date('2026-09-09T19:00:00.000Z') },
+  { id: '00000000-0000-4000-8000-0000000000b6', calendarId: CAL, resourceIds: [R_MANICURISTA], title: 'Manicure — canceló la clienta (demo)', status: 'cancelada', start: new Date('2026-09-09T20:00:00.000Z'), end: new Date('2026-09-09T20:45:00.000Z') },
+  { id: '00000000-0000-4000-8000-0000000000b7', calendarId: CAL_NORTE, resourceIds: [R_ESTILISTA], title: 'Corte y peinado (Sucursal Norte, demo)', status: 'confirmada', start: new Date('2026-09-10T17:00:00.000Z'), end: new Date('2026-09-10T18:00:00.000Z') },
+  { id: '00000000-0000-4000-8000-0000000000b8', calendarId: CAL, resourceIds: [R_ESTILISTA], title: 'Corte matutino (demo)', status: 'completada', start: new Date('2026-09-11T16:00:00.000Z'), end: new Date('2026-09-11T16:45:00.000Z') },
+  { id: '00000000-0000-4000-8000-0000000000b9', calendarId: CAL, resourceIds: [R_MANICURISTA], title: 'Manicure (demo)', status: 'confirmada', start: new Date('2026-09-11T19:00:00.000Z'), end: new Date('2026-09-11T19:45:00.000Z') },
+  { id: '00000000-0000-4000-8000-0000000000ba', calendarId: CAL, resourceIds: [R_ESTACION], title: 'Reservación de estación (demo)', status: 'pendiente', start: new Date('2026-09-11T22:00:00.000Z'), end: new Date('2026-09-11T23:00:00.000Z') },
+  { id: '00000000-0000-4000-8000-0000000000bb', calendarId: CAL, resourceIds: [R_ESTILISTA], title: 'Corte de fin de semana (demo)', status: 'confirmada', start: new Date('2026-09-12T16:00:00.000Z'), end: new Date('2026-09-12T17:00:00.000Z') },
+  { id: '00000000-0000-4000-8000-0000000000bc', calendarId: CAL, resourceIds: [R_MANICURISTA], title: 'Manicure (demo)', status: 'confirmada', start: new Date('2026-09-12T17:00:00.000Z'), end: new Date('2026-09-12T17:45:00.000Z') },
+  { id: '00000000-0000-4000-8000-0000000000bd', calendarId: CAL, resourceIds: [R_ESTILISTA], title: 'Corte y peinado (demo)', status: 'confirmada', start: new Date('2026-09-14T16:00:00.000Z'), end: new Date('2026-09-14T17:00:00.000Z') },
+  { id: '00000000-0000-4000-8000-0000000000be', calendarId: CAL_NORTE, resourceIds: [R_ESTILISTA], title: 'Corte (Sucursal Norte, demo)', status: 'pendiente', start: new Date('2026-09-15T16:00:00.000Z'), end: new Date('2026-09-15T17:00:00.000Z') },
+  { id: '00000000-0000-4000-8000-0000000000bf', calendarId: CAL, resourceIds: [R_ESTACION, R_MANICURISTA], title: 'Pedicure + manicure combo (demo)', status: 'confirmada', start: new Date('2026-09-16T21:00:00.000Z'), end: new Date('2026-09-16T22:00:00.000Z') },
+  { id: '00000000-0000-4000-8000-0000000000c0', calendarId: CAL_NORTE, resourceIds: [R_ESTILISTA], title: 'Corte (Sucursal Norte, demo)', status: 'confirmada', start: new Date('2026-09-17T20:00:00.000Z'), end: new Date('2026-09-17T21:00:00.000Z') },
+  { id: '00000000-0000-4000-8000-0000000000c1', calendarId: CAL, resourceIds: [R_ESTILISTA], title: 'Corte (demo)', status: 'confirmada', start: new Date('2026-09-18T16:00:00.000Z'), end: new Date('2026-09-18T17:00:00.000Z') },
+  { id: '00000000-0000-4000-8000-0000000000c2', calendarId: CAL, resourceIds: [R_MANICURISTA], title: 'Manicure (demo)', status: 'confirmada', start: new Date('2026-09-19T16:00:00.000Z'), end: new Date('2026-09-19T16:45:00.000Z') },
+];
 
 async function main() {
   // --- Auth ---
@@ -174,6 +226,28 @@ async function main() {
             { resource_id: R_ESTILISTA, start_time: start, end_time: end, status: 'confirmada', blocking: true },
             { resource_id: R_ESTACION, start_time: start, end_time: end, status: 'confirmada', blocking: true },
           ],
+        },
+      },
+    });
+  }
+
+  console.log(`Sembrando ${DEMO_BOOKINGS.length} reservas de demostracion (alrededor del 2026-09-11)...`);
+  for (const b of DEMO_BOOKINGS) {
+    const already = await prisma.bookings.findUnique({ where: { booking_id: b.id } });
+    if (already) continue;
+    await prisma.bookings.create({
+      data: {
+        booking_id: b.id,
+        calendar_id: b.calendarId,
+        title: b.title,
+        status: b.status,
+        source_type: 'demo',
+        source_id: b.id,
+        created_by: userIdByKey.get('manager') ?? null,
+        starts_at: b.start,
+        ends_at: b.end,
+        booking_resources: {
+          create: b.resourceIds.map((rid) => ({ resource_id: rid, start_time: b.start, end_time: b.end, status: b.status, blocking: true })),
         },
       },
     });

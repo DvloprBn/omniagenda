@@ -165,6 +165,16 @@ por calendario. Pendiente: sesión de repaso guiado.
 - **Teclado no es un checkbox, es una ruta funcional completa** — la alternativa de teclado usa
   el MISMO camino de datos que el arrastre con mouse (optimista + `PATCH` + revertir), en vez de
   ser una implementación paralela más simple que se desincroniza con el tiempo.
+- **Una rejilla "de horario de oficina" es una decisión de UX, no una que el motor deba imponer**
+  — cortar la vista a 07:00–21:00 parecía razonable, pero escondía datos reales sin avisar. La
+  corrección (24h completas) fue el primer caso real de este proyecto de "el dueño prueba algo
+  interactivo de verdad y encuentra un límite arbitrario que el código no debería tener".
+- **Datos de demostración "suficientes" son parte de construir la funcionalidad, no un adorno
+  posterior** — una sola reserva sembrada, 3 meses en el futuro, hacía que la Fase 5b se viera
+  vacía al abrirla en el día real. El dueño lo dijo explícito: el seed de demostración se queda
+  como está hasta producción (nunca hay que "limpiarlo" antes de entregar) — mismo espíritu que ya
+  regía el resto del seed (datos ficticios, repo público), extendido a "suficientes para probar
+  cada vista", no solo "el mínimo que hace pasar una prueba".
 
 ### Fase 7 — Cobro en línea
 - Por qué un identificador de Stripe guardado puede dejar de existir del lado de Stripe

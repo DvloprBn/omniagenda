@@ -5,9 +5,16 @@
  * un navegador; el componente solo la usa.
  */
 
-/** Ventana visible de horas en las vistas de rejilla (día/semana). 07:00–21:00. */
-export const GRID_START_HOUR = 7;
-export const GRID_END_HOUR = 21;
+/**
+ * Ventana visible de horas en las vistas de rejilla (día/semana): las 24
+ * horas completas — un negocio real puede tener reservas fuera de un
+ * horario "de oficina" arbitrario (limpieza nocturna, apertura temprana),
+ * y limitar la rejilla a un rango fijo las esconde sin avisar. Cortar la
+ * vista a "horas de oficina" es una decisión de UX (mostrar menos por
+ * default, con scroll), no una que el motor deba imponer.
+ */
+export const GRID_START_HOUR = 0;
+export const GRID_END_HOUR = 24;
 export const GRID_TOTAL_MINUTES = (GRID_END_HOUR - GRID_START_HOUR) * 60;
 
 /** Redondea `minutes` (desde medianoche) al múltiplo de `stepMinutes` más cercano. */

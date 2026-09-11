@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   GRID_START_HOUR,
+  GRID_END_HOUR,
   snapMinutes,
   minutesToTopPx,
   durationToHeightPx,
@@ -28,10 +29,10 @@ test('durationToHeightPx escala linealmente', () => {
   assert.equal(durationToHeightPx(60, 2), 120);
 });
 
-test('clampToGrid recorta a la ventana visible', () => {
-  assert.equal(clampToGrid(0), GRID_START_HOUR * 60);
-  assert.equal(clampToGrid(23 * 60), 21 * 60);
-  assert.equal(clampToGrid(10 * 60), 10 * 60);
+test('clampToGrid recorta a la ventana visible (las 24h reales)', () => {
+  assert.equal(clampToGrid(-30), GRID_START_HOUR * 60); // antes de medianoche -> el borde de arriba
+  assert.equal(clampToGrid(GRID_END_HOUR * 60 + 30), GRID_END_HOUR * 60); // despues de medianoche -> el borde de abajo
+  assert.equal(clampToGrid(10 * 60), 10 * 60); // dentro de la ventana: sin cambio
 });
 
 test('pxDeltaToSnappedMinutes convierte y redondea', () => {

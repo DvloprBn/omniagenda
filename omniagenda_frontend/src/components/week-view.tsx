@@ -17,9 +17,12 @@ import {
 import { BookingBlock, bookingTitle } from '@/components/booking-block';
 import { clientFetch, ClientApiError } from '@/lib/client-api';
 
-const PX_PER_MINUTE = 1.2; // 72px/hora — suficiente para leer el título de una cita de 30-60 min
+const PX_PER_MINUTE = 1; // 60px/hora — la rejilla cubre las 24h reales, no solo "horario de oficina"
 const GRID_HEIGHT = GRID_TOTAL_MINUTES * PX_PER_MINUTE;
-const HOURS = Array.from({ length: GRID_END_HOUR - GRID_START_HOUR + 1 }, (_, i) => GRID_START_HOUR + i);
+// Una etiqueta por hora 0..23 — NUNCA una 25ª en GRID_END_HOUR (24): esa
+// línea es solo el borde inferior del contenedor (medianoche del día
+// SIGUIENTE), etiquetarla otra vez como "12 a.m." confundiría, no informa.
+const HOURS = Array.from({ length: GRID_END_HOUR - GRID_START_HOUR }, (_, i) => GRID_START_HOUR + i);
 const KEYBOARD_STEP_MINUTES = 15;
 
 type AnyBooking = Booking | BusyBooking;

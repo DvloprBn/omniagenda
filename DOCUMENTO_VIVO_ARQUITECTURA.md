@@ -4,10 +4,11 @@
 > aprendió. La estrategia vive en [`PLAN_DESARROLLO.md`](./PLAN_DESARROLLO.md); el día a día en
 > [`ESTADO_PROYECTO.md`](./ESTADO_PROYECTO.md).
 >
-> **v0.8 — 2026-09-11.** Cada sección lleva su estado: qué está implementado y verificado en
+> **v0.9 — 2026-09-11.** Cada sección lleva su estado: qué está implementado y verificado en
 > vivo (Fases 0–4, el negocio de demostración decidido en §11, los cimientos de interfaz en §12,
 > el vínculo recurso↔cuenta en §13, y el primer incremento de la Fase 5b — cimientos + Vista de
-> Semana — en §14) y qué sigue en construcción (el resto de la Fase 5b: Día/Mes/Línea de tiempo).
+> Semana, corregida tras la primera revisión real del dueño — en §14) y qué sigue en construcción
+> (el resto de la Fase 5b: Día/Mes/Línea de tiempo).
 
 ---
 
@@ -809,6 +810,38 @@ Jest solo para el frontend.
   del arrastre, que el `transform` se sienta a 60fps, y que el foco de teclado se vea correctamente
   en el DOM real — mismo límite ya declarado desde la Fase 5a, ahora aplicado a una superficie
   interactiva de verdad (antes solo aplicaba a formularios y navegación).
+
+### Corrección tras la primera revisión real del dueño (2026-09-11)
+
+El dueño abrió la Vista de Semana y dio la primera retroalimentación real sobre una superficie
+interactiva (no solo login/formularios, como en la Fase 5a): "me agrada, incluso lo veo mejor
+formateado que el de Espiral" — pero señaló dos problemas concretos.
+
+1. **"¿Por qué no se ven las 24 hrs?"** La rejilla arrancaba en `GRID_START_HOUR=7` y terminaba en
+   `GRID_END_HOUR=21` (07:00–21:00), un rango arbitrario de "horario de oficina" que ocultaba
+   cualquier reserva fuera de esa ventana sin avisar — una decisión de diseño que el motor no
+   debía imponer (un negocio real puede tener limpieza nocturna, apertura antes de las 7, etc.).
+   **Corregido:** `GRID_START_HOUR=0` / `GRID_END_HOUR=24` — la rejilla cubre el día completo.
+   `HOURS` (las etiquetas de hora en el margen izquierdo) se generan con `GRID_END_HOUR -
+   GRID_START_HOUR` elementos (24), nunca `+1`: una 25ª etiqueta en la hora 24 se leería "12 a.m."
+   otra vez (es la medianoche del día SIGUIENTE, el borde inferior del contenedor) — confundiría
+   en vez de informar. `PX_PER_MINUTE` bajó de 1.2 a 1 (60px/hora en vez de 72px/hora) para que
+   cubrir 24 horas reales no vuelva la página excesivamente larga.
+2. **"No es necesario que los borres" — faltaban datos para revisar.** La única reserva sembrada
+   vivía en 2026-12-15 (fecha fija, usada por los scripts de prueba) — al abrir el panel en la
+   fecha real de hoy, la Vista de Semana se veía vacía. El dueño pidió explícitamente **datos de
+   prueba suficientes para revisar cada funcionalidad, y que se queden en el seed hasta
+   producción** (no algo que haya que limpiar después). Se agregó un quinto bloque al seed
+   (`DEMO_BOOKINGS`, 17 reservas con fechas FIJAS entre 2026-09-07 y 2026-09-19): las 2 sucursales,
+   los 3 recursos, y los 4 estados reales (`confirmada`/`pendiente`/`cancelada`/`completada`) —
+   fechas fijas a propósito, no relativas a "hoy" en tiempo de ejecución, para que la siembra siga
+   siendo idempotente y predecible cada vez que se corre, tal como pidió el dueño.
+
+**Verificado de nuevo con reinicio limpio TOTAL:** seed idempotente (mismos 18 `bookings` en dos
+corridas seguidas), `GET /agenda?view=week&date=2026-09-09&cal=<Centro>` → 9 bloques reales
+(`oa-booking-block`) en la semana, `<Norte>` → 2; exactamente 24 etiquetas de hora en el margen
+(nunca 25); sin regresión en núcleo (63/63), Jest backend (51/51), `auth-sweep.sh` (27/27),
+`agenda-e2e.sh` (23/23), checks SQL de Fase 2, y las 16 pruebas del frontend.
 
 ### Pendiente
 
