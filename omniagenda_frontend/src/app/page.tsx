@@ -1,79 +1,42 @@
-import { getHealth } from '@/lib/api';
+import Link from 'next/link';
 
-// Este proyecto casi siempre necesita datos vivos del backend en cada
-// request (sesion, calendarios, disponibilidad). `force-dynamic` en el
-// layout raiz seria lo normal a partir de la Fase 3; aqui, en una sola
-// pagina, basta marcarla. Ver Bridge, leccion #11.
-export const dynamic = 'force-dynamic';
+export const metadata = {
+  title: 'OmniAgenda',
+  description: 'Motor de agenda y reservaciones — panel del negocio',
+};
 
-function StatusPill({ value }: { value: string }) {
-  const ok = value === 'ok';
+/**
+ * FASE 5a — landing publica minima. El vertical elegido para la demo
+ * (PLAN_DESARROLLO.md §11) es una estetica MULTISUCURSAL; esta pantalla no
+ * es el producto — solo la puerta hacia el panel real (`/agenda`,
+ * protegido). Sin datos en vivo aqui a proposito: es estatica y liviana.
+ */
+export default function HomePage() {
   return (
-    <span
-      className={
-        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ' +
-        (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800')
-      }
+    <div
+      className="flex min-h-screen flex-col items-center justify-center px-6 text-center"
+      style={{ background: 'linear-gradient(180deg, var(--brand-50), var(--paper) 60%)' }}
     >
-      <span className={'size-1.5 rounded-full ' + (ok ? 'bg-green-600' : 'bg-red-600')} />
-      {ok ? 'ok' : value}
-    </span>
-  );
-}
-
-export default async function HomePage() {
-  const health = await getHealth();
-  const failed = 'error' in health;
-
-  return (
-    <div className="mx-auto max-w-xl px-6 py-16">
-      <p className="text-xs font-semibold uppercase tracking-widest text-(--brand)">OmniAgenda</p>
-      <h1 className="mt-1 text-2xl font-bold text-(--brand-dark)">Fase 0 — Infraestructura</h1>
-      <p className="mt-2 text-sm text-neutral-600">
-        Esta pantalla existe solo para confirmar, en vivo y desde el navegador, que los cuatro
-        servicios de <code className="rounded bg-neutral-200 px-1">docker-compose.yml</code> estan
-        arriba y se hablan entre si. Se reemplaza en cuanto empiece la interfaz real (Fase 5).
-      </p>
-
-      <div className="mt-8 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-        {failed ? (
-          <div className="text-sm">
-            <p className="font-medium text-red-700">El frontend no pudo hablar con el backend.</p>
-            <p className="mt-1 text-neutral-600">{health.error}</p>
-            <p className="mt-3 text-xs text-neutral-500">
-              Revisa que <code>omniagenda_backend</code> haya arrancado sin errores en los logs de
-              Docker.
-            </p>
-          </div>
-        ) : (
-          <dl className="divide-y divide-neutral-100 text-sm">
-            <div className="flex items-center justify-between py-2">
-              <dt className="text-neutral-600">Frontend (Next.js) &rarr; Backend (NestJS)</dt>
-              <dd><StatusPill value={health.ok ? 'ok' : 'parcial'} /></dd>
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <dt className="text-neutral-600">Backend &rarr; proceso Node</dt>
-              <dd><StatusPill value={health.checks.node} /></dd>
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <dt className="text-neutral-600">Backend &rarr; PostgreSQL (<code>SELECT 1</code>)</dt>
-              <dd><StatusPill value={health.checks.postgres} /></dd>
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <dt className="text-neutral-600">Backend &rarr; Redis (<code>PING</code>)</dt>
-              <dd><StatusPill value={health.checks.redis} /></dd>
-            </div>
-            <div className="flex items-center justify-between py-2 text-xs text-neutral-500">
-              <dt>Respuesta del backend</dt>
-              <dd>{health.time}</dd>
-            </div>
-          </dl>
-        )}
+      <div className="oa-anim-rise">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--brand-600)' }}>
+          OmniAgenda
+        </p>
+        <h1 className="mt-3 max-w-xl text-3xl font-bold tracking-tight sm:text-4xl" style={{ color: 'var(--ink-900)' }}>
+          Un calendario que no se pisa
+        </h1>
+        <p className="mx-auto mt-4 max-w-md text-sm" style={{ color: 'var(--ink-500)' }}>
+          Reservas por sucursal, sin doble reserva posible — garantizado por la base de datos, no
+          solo por la pantalla.
+        </p>
+        <div className="mt-8 flex items-center justify-center gap-3">
+          <Link href="/login" className="oa-btn oa-btn-primary">
+            Entrar al panel
+          </Link>
+          <Link href="/estado" className="oa-btn oa-btn-ghost">
+            Estado del sistema
+          </Link>
+        </div>
       </div>
-
-      <p className="mt-6 text-xs text-neutral-500">
-        Endpoint crudo: <code className="rounded bg-neutral-200 px-1">GET http://localhost:3060/health</code>
-      </p>
     </div>
   );
 }

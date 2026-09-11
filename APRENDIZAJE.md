@@ -110,7 +110,21 @@ por calendario. Pendiente: sesión de repaso guiado.
   mismo problema que Espiral resolvió como `artists.location_change_buffer_minutes` (atado a un
   negocio de tatuajes), ahora como una propiedad genérica de cualquier recurso.
 
-### Fase 5 — Interfaz y animación
+### Fase 5a — Cimientos de interfaz  ✅ construido 2026-09-11
+
+- **Cookies y hostname vs. puerto** — verificado con curl usando el mismo cookie-jar contra
+  `:3060` y `:3061`: el navegador decide a quién manda una cookie por hostname, nunca por
+  puerto. Es lo que hace que backend y frontend en desarrollo, aunque sean dos "sitios"
+  distintos en la práctica, compartan la sesión sin ningún truco.
+- **Dos clientes de API, uno para cada lado del render** —
+  `omniagenda_frontend/src/lib/server-fetch.ts` (Server Components, reenvía cookies a mano) vs.
+  `lib/client-api.ts` (Client Components, `credentials:'include'`) — por qué no es el mismo
+  código: cada uno corre en una máquina distinta (el contenedor del frontend vs. el navegador
+  del usuario) y llega al backend por una URL distinta.
+- **El chequeo optimista de `proxy.ts`**: por qué basta con mirar si la cookie EXISTE (nunca
+  validar el JWT ahí) para decidir un redirect — la autorización real siempre la hace el backend.
+
+### Fase 5b — Interfaz real y animación (pendiente)
 - Por qué solo `transform` y `opacity` animan a 60fps, y qué hace el navegador con `width`.
 - `prefers-reduced-motion`: la animación como decisión de accesibilidad, no de gusto.
 - Layout shift (CLS) y por qué un esqueleto de carga más corto que la página real **es** el

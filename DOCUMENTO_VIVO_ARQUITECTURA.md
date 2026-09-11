@@ -4,9 +4,9 @@
 > aprendió. La estrategia vive en [`PLAN_DESARROLLO.md`](./PLAN_DESARROLLO.md); el día a día en
 > [`ESTADO_PROYECTO.md`](./ESTADO_PROYECTO.md).
 >
-> **v0.5 — 2026-09-11.** Cada sección lleva su estado: qué está implementado y verificado en
-> vivo (Fases 0–4 + el negocio de demostración decidido, §11) y qué sigue siendo diseño previo al
-> código (Fases 5+).
+> **v0.6 — 2026-09-11.** Cada sección lleva su estado: qué está implementado y verificado en
+> vivo (Fases 0–4, el negocio de demostración decidido en §11, y los cimientos de interfaz en
+> §12) y qué sigue siendo diseño previo al código (Fase 5b+).
 
 ---
 
@@ -547,3 +547,78 @@ tele-transporta — así que se reporta como conflicto **DURO**, igual que un tr
 El seed ahora siembra **2 sucursales reales** ("Centro" y "Norte", ficticias) con un estilista que
 trabaja en ambas — la interfaz de la Fase 5 tiene, desde el día uno, un caso real de multisucursal
 que mostrar, no uno que haya que inventar después.
+
+---
+
+## §12. Fase 5a — cimientos de interfaz (login, sesión, panel protegido)
+
+**Decidido: 2026-09-11 · Estado: implementado y verificado — con un límite real de verificación,
+explicado abajo.**
+
+### Un límite que hay que decir en voz alta antes de seguir
+
+**No hay una herramienta de navegador disponible en esta sesión.** Todo lo que se puede verificar
+por HTTP/build/logs SÍ se verificó de verdad (ver la lista abajo) — pero la calidad visual real
+(¿se ve profesional?, ¿la animación se siente fluida?, ¿hay algo roto visualmente que curl no
+puede ver?) **no está confirmada**. Mismo criterio ya aplicado en el proyecto `gallery` (memoria
+del dueño): se construye real, se verifica lo verificable, y se marca explícito lo que falta
+confirmar a simple vista. El dueño confirma esto último al abrir `http://localhost:3061`.
+
+### Qué se construyó
+
+La Fase 5 completa (`PLAN_DESARROLLO.md` §8) son las 5 vistas de calendario + arrastrar y soltar.
+Ninguna de esas vistas puede existir sin lo que **sí** se construyó ahora — la Fase 5a, sus
+cimientos:
+
+- **Cliente de API real**, dos mitades (mismo patrón ya probado en OmniUser, reescrito desde cero
+  para este proyecto — nunca se copió su código):
+  - `lib/server-fetch.ts` — para Server Components. Reenvía las cookies httpOnly de la petición
+    entrante hacia el backend por `INTERNAL_API_URL` (la red interna de Docker); un 401 real del
+    backend es la única señal de "no hay sesión", nunca un estado duplicado en Next.
+  - `lib/client-api.ts` — para Client Components (el formulario de login). Habla directo al
+    backend por `NEXT_PUBLIC_API_URL` (el puerto expuesto al host) con `credentials:'include'`.
+- **`proxy.ts`** (Next 16 renombró `middleware.ts`): chequeo optimista de la cookie `access_token`
+  — protege `/agenda/*`, y saca de `/login` a quien ya tiene sesión. La autorización REAL la
+  sigue haciendo el backend en cada request.
+- **Login real de 2 pantallas** (`app/login/`): correo+contraseña primero; el código de 2FA
+  aparece SOLO si `POST /auth/login/step2` responde `requiresTwoFactor:true` — el formulario
+  reacciona a la API, nunca decide por su cuenta si una cuenta tiene 2FA.
+- **`/agenda` protegido** (`app/agenda/layout.tsx` + `page.tsx`): confirma sesión + trae los
+  calendarios reales del usuario + un selector de sucursal (`BranchSwitcher`, el vertical elegido
+  en §11 es multisucursal) que vive en la URL (`?cal=`), nunca solo en estado de React. La página
+  por default lista las reservas reales de los próximos 7 días — prueba end-to-end de que la
+  cadena sesión→API→datos funciona; **no** es todavía la vista de calendario real (eso es 5b).
+- **Lenguaje visual propio, CSS puro** (`globals.css`): tokens de color/duración/easing propios;
+  animaciones (`oa-rise-in`, `oa-shake`, `oa-spin`) escritas solo con `transform`/`opacity`,
+  **todas** con su versión sin movimiento detrás de `prefers-reduced-motion: reduce`
+  (`PLAN_DESARROLLO.md` §9 — componentes 100% propios, cero librería de animación).
+
+### Un detalle real de por qué esto funciona: las cookies ignoran el puerto
+
+El backend (`:3060`) y el frontend (`:3061`) son **el mismo hostname** (`localhost`) en
+desarrollo. Un navegador (y `curl`, verificado) decide a quién le manda una cookie por
+**hostname + ruta**, nunca por puerto — así que una cookie httpOnly que puso el backend al
+responder el login SÍ viaja de vuelta cuando el navegador visita el frontend después. Es lo que
+hace que `serverFetch` (dentro del contenedor del frontend, leyendo `cookies()` de la petición
+entrante) encuentre la sesión real sin ningún paso extra. Mismo patrón que ya probó OmniUser.
+
+### Verificado en vivo (2026-09-11)
+
+- `next build` (modo producción) → **compila limpio**, TypeScript sin errores, rutas clasificadas
+  correctamente (`/` estática, `/login`/`/estado`/`/agenda` dinámicas, `proxy.ts` registrado) —
+  la comprobación exacta que pide la lección #11 del Bridge.
+- `GET /agenda` sin cookie → **307 a `/login?next=%2Fagenda`** (la protección real de `proxy.ts`).
+- **Login real por curl** contra el backend (`:3060`) con una cuenta sembrada → cookies guardadas
+  → esas MISMAS cookies contra el frontend (`:3061`) en `GET /agenda` → **200**, con el nombre
+  real de la cuenta, las 2 sucursales reales y "Próximos 7 días" en el HTML devuelto.
+- `GET /login` con sesión activa → **307 a `/agenda`** (protección inversa).
+- `POST /auth/logout` real → la cookie se limpia → `GET /agenda` vuelve a dar **307 a `/login`**.
+- Lo que **no** se verificó (requiere navegador): que el formulario de 2FA se revele
+  correctamente en el DOM tras la respuesta del paso 2 (la lógica de React se revisó a mano, no
+  se ejecutó), y toda la calidad visual/animación real.
+
+### Pendiente — Fase 5b
+
+Las 5 vistas de calendario (día/semana/mes/agenda/línea de tiempo) + arrastrar y soltar. Esta es
+la parte que de verdad demuestra "animación de grado profesional" — 5a solo construyó el piso
+sobre el que se para.

@@ -1,8 +1,211 @@
 @import 'tailwindcss';
 
+/*
+ * Lenguaje visual de OmniAgenda — escrito desde cero para este proyecto
+ * (PLAN_DESARROLLO.md §9: nunca se reutiliza código de terceros; el
+ * material compartido por el dueño es solo referencia, nunca algo que se
+ * pega). Fase 5.
+ *
+ * Reglas de animación, no negociables:
+ *   - Solo `transform`/`opacity` en animaciones CONTINUAS (nunca `width`,
+ *     `top`, `box-shadow` en un keyframe que corre en bucle o por varios
+ *     frames) — son las dos propiedades que el navegador anima en la GPU
+ *     sin recalcular layout.
+ *   - Toda animación tiene una versión sin movimiento detrás de
+ *     `prefers-reduced-motion: reduce`.
+ */
+
 :root {
-  --brand: #6d28d9;
-  --brand-dark: #4c1d95;
-  --ok: #16a34a;
-  --bad: #dc2626;
+  /* Marca */
+  --brand-50: #f5f3ff;
+  --brand-100: #ede9fe;
+  --brand-200: #ddd6fe;
+  --brand-400: #a78bfa;
+  --brand-500: #7c3aed;
+  --brand-600: #6d28d9;
+  --brand-700: #5b21b6;
+  --brand-900: #3b0764;
+
+  /* Neutros */
+  --ink-900: #18181b;
+  --ink-700: #3f3f46;
+  --ink-500: #71717a;
+  --ink-300: #d4d4d8;
+  --ink-100: #f4f4f5;
+  --paper: #fafafa;
+  --white: #ffffff;
+
+  /* Semánticos */
+  --ok-600: #16a34a;
+  --ok-50: #f0fdf4;
+  --bad-600: #dc2626;
+  --bad-50: #fef2f2;
+  --warn-600: #d97706;
+  --warn-50: #fffbeb;
+
+  /* Elevación — sombras suaves, un solo par para toda la app */
+  --shadow-card: 0 1px 2px rgba(24, 24, 27, 0.04), 0 8px 24px -8px rgba(24, 24, 27, 0.12);
+  --shadow-pop: 0 4px 12px -2px rgba(109, 40, 217, 0.35);
+
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  /* Duraciones — una escala corta, consistente en toda la app */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 420ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink-900);
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Primitivas reutilizables ─────────────────────────────────────────── */
+
+.oa-card {
+  background: var(--white);
+  border: 1px solid var(--ink-100);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.oa-field {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink-700);
+  margin-bottom: 0.375rem;
+}
+
+.oa-input {
+  width: 100%;
+  border: 1px solid var(--ink-300);
+  border-radius: var(--radius-md);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.9375rem;
+  color: var(--ink-900);
+  background: var(--white);
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.oa-input:focus {
+  outline: none;
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px var(--brand-100);
+}
+.oa-input[aria-invalid='true'] {
+  border-color: var(--bad-600);
+}
+
+.oa-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  padding: 0.625rem 1.125rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+.oa-btn:active {
+  transform: scale(0.97);
+}
+.oa-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}
+.oa-btn-primary {
+  background: var(--brand-600);
+  color: var(--white);
+  box-shadow: var(--shadow-pop);
+}
+.oa-btn-primary:hover:not(:disabled) {
+  background: var(--brand-700);
+}
+.oa-btn-ghost {
+  background: transparent;
+  color: var(--ink-700);
+  border-color: var(--ink-300);
+}
+.oa-btn-ghost:hover:not(:disabled) {
+  background: var(--ink-100);
+}
+
+.oa-error {
+  color: var(--bad-600);
+  background: var(--bad-50);
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-md);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+/* ── Animaciones ──────────────────────────────────────────────────────── */
+
+@keyframes oa-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes oa-shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-4px); }
+  40%, 60% { transform: translateX(4px); }
+}
+
+@keyframes oa-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes oa-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.oa-anim-rise {
+  animation: oa-rise-in var(--dur-slow) var(--ease-out) both;
+}
+.oa-anim-shake {
+  animation: oa-shake 420ms var(--ease-out);
+}
+.oa-anim-fade {
+  animation: oa-fade-in var(--dur-base) var(--ease-out) both;
+}
+.oa-spinner {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: var(--white);
+  animation: oa-spin 700ms linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-anim-rise,
+  .oa-anim-shake,
+  .oa-anim-fade,
+  .oa-spinner {
+    animation: none !important;
+  }
+  .oa-btn:active {
+    transform: none;
+  }
 }

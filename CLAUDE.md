@@ -7,7 +7,9 @@
 > a 4 (infra · `omniagenda_core` · schema+`EXCLUDE` · identidad+permisos · API de agenda) hechas y
 > verificadas — ver [`ESTADO_PROYECTO.md`](./ESTADO_PROYECTO.md). **Negocio de demostración
 > decidido (2026-09-11): estética multisucursal** — ver `DOCUMENTO_VIVO_ARQUITECTURA.md` §11.
-> Siguiente: Fase 5 (interfaz), ya sin bloqueo.
+> **Fase 5a (login + sesión + panel protegido) hecha** — ver §12 del mismo documento; **sin
+> navegador en esta sesión**, el dueño confirma visualmente antes de seguir con la Fase 5b (las 5
+> vistas de calendario + arrastrar y soltar).
 
 **Motor de agenda replicable + aplicación real que lo demuestra.** El núcleo (`omniagenda_core`)
 es lo que después sirve de base para construir agendas de negocio reales: reservación de

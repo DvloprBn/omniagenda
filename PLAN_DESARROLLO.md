@@ -346,7 +346,7 @@ Cada fase se **verifica de verdad** antes de la siguiente — nunca "arrancó si
 | **2** ✅ | Persistencia + la garantía real | Schema Prisma, migración con el `EXCLUDE` escrito a mano, `btree_gist` | **hecho 2026-09-10** — 6 modelos, `EXCLUDE` + 3 `CHECK` aplicados; `double_booking.sql` 6/6 PASS contra Postgres en vivo; `status-sync.mjs` PASS. Ver `ESTADO_PROYECTO.md` §1 |
 | **3** ✅ | Identidad y permisos | Auth portada de OmniUser + permisos por calendario, `APP_GUARD` fail-closed | **hecho 2026-09-10** — 31 pruebas Jest + `auth-sweep.sh` 27/27 + 2FA e2e. Ver `ESTADO_PROYECTO.md` §1 y `DOCUMENTO_VIVO_ARQUITECTURA.md` §9 |
 | **4** ✅ | API de agenda | Reservar, mover, cancelar, multi-recurso, conflicto duro/blando, turnos, tareas | **hecho 2026-09-11** — 40 pruebas Jest + `agenda-e2e.sh` 16/16 (doble-reserva real → 409). Ver `ESTADO_PROYECTO.md` §1 y `DOCUMENTO_VIVO_ARQUITECTURA.md` §10 |
-| **5** | Interfaz y animación | Las 5 vistas, arrastrar y soltar, lenguaje visual propio | Medición real de fotogramas, `prefers-reduced-motion`, teclado completo |
+| **5** 🔶 | Interfaz y animación | Las 5 vistas, arrastrar y soltar, lenguaje visual propio | **5a hecha 2026-09-11** (cimientos: login, sesión, panel protegido, selector de sucursal) — **5b pendiente** (las 5 vistas de calendario reales + arrastrar y soltar). Ver `ESTADO_PROYECTO.md` §1 y `DOCUMENTO_VIVO_ARQUITECTURA.md` §12 |
 | **6** | Recordatorios, `.ics`, lista de espera | Cron, correo real, suscripción de calendario | Correo real recibido; el `.ics` abre en un cliente real |
 | **7** | Cobro en línea | Depósito/anticipo con Stripe en modo prueba | Pago de prueba real de punta a punta |
 | **8** | Auditoría de seguridad | Checklist completo + `PRUEBAS_SEGURIDAD.md` propio | Cada prueba con comando exacto y resultado real fechado |
@@ -407,6 +407,7 @@ física, cambio de mes sin salto. **Lenguaje visual:** se construye desde el mat
 | 2026-09-10 | 🟡 **Punto de venta**: posible paquete complementario, no alcance de v1 | El dueño lo planteó como "quizá". Espiral ya tiene un POS real que serviría de base |
 | 2026-09-11 | ✅ **Negocio de demostración: estética multisucursal.** Restaurante multisucursal diferido a un caso de estudio futuro | El dueño preguntó cuál da un caso de estudio más completo. Se eligió el que **hace crecer al motor** (colchón entre calendarios) sobre el que solo ejercita lo ya construido. Ver `DOCUMENTO_VIVO_ARQUITECTURA.md` §11 |
 | 2026-09-11 | ✅ **Colchón entre calendarios construido** (`resources.calendar_switch_buffer_minutes`, generaliza `artists.location_change_buffer_minutes` de Espiral) — conflicto DURO, a diferencia del colchón general (blando) | Consecuencia directa de elegir el vertical multisucursal: sin esto, "multisucursal" seguía siendo solo una palabra en la demo. `omniagenda_core` subió a 0.2.0 (cambio de tipos) |
+| 2026-09-11 | 🔶 **Fase 5a (cimientos de interfaz) construida** — login real (2 pasos + 2FA), sesión por cookies compartidas entre backend y frontend por nombre de host, `/agenda` protegido con selector de sucursal, lenguaje visual propio en CSS puro | **Sin navegador para verificar lo visual** — todo lo verificable por HTTP/build se verificó (ver `ESTADO_PROYECTO.md` §1); el dueño confirma la calidad visual/animación al abrirlo. **5b (las 5 vistas de calendario + arrastrar y soltar) sigue pendiente** |
 
 ---
 
