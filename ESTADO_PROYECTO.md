@@ -11,7 +11,7 @@
 >
 > **Antes de repetir un error ya conocido:** [`../../DocumentacionProyecto/Bridge/`](../../DocumentacionProyecto/Bridge/).
 
-Última actualización: **2026-09-11** (Vista de Semana corregida: 24h reales + 17 reservas de demostración)
+Última actualización: **2026-09-11** (arrastrar-y-soltar de la Vista de Semana confirmado por el dueño en su navegador)
 
 ---
 
@@ -24,9 +24,9 @@ pantallas, sesión por cookies, panel protegido con selector de sucursal, y ahor
 vista de calendario real con arrastrar y soltar** (Semana). El dueño ya confirmó visualmente la
 Fase 5a el 2026-09-11 ("se ve bien, aún no tiene nada" — exactamente lo esperado de unos
 cimientos); la Vista de Semana que se acaba de construir es la primera pieza que le pone
-contenido real. **Sin herramienta de navegador en esta sesión** — lo verificable por HTTP/build
-se verificó de verdad; la sensación física real del arrastre sigue pendiente de que el dueño la
-pruebe en su navegador.
+contenido real. **Sin herramienta de navegador en esta sesión** — lo verificable por HTTP/build se
+verificó de verdad; el dueño ya probó el arrastre en su propio navegador y confirmó: "se siente
+muy natural, funciona muy bien, mueve entre columnas sin retrasos".
 
 Estructura real en disco:
 
@@ -139,9 +139,10 @@ opcional, uno por par recurso-calendario) · `time_off` (rango de días, `CHECK 
   en vez de simular una vista que no existe.
 - Sin regresión: núcleo 63/63, backend Jest 51/51, `auth-sweep.sh` 27/27, `agenda-e2e.sh` 23/23,
   checks SQL de Fase 2.
-- **Sigue sin poder verificarse sin navegador**: la sensación física real del arrastre y que el
-  foco de teclado se vea correctamente — mismo límite de siempre, ahora sobre una superficie
-  interactiva real.
+- **Confirmado por el dueño en su navegador (2026-09-11)**: "se siente muy natural, funciona muy
+  bien, mueve entre columnas sin retrasos" — la sensación física del arrastre queda verificada.
+  Sigue sin poder confirmarse a simple vista en esta sesión: que el foco de teclado se vea
+  correctamente.
 
 **Corrección tras la primera revisión real del dueño (2026-09-11):** dos hallazgos concretos al
 abrir la Vista de Semana. (1) "¿Por qué no se ven las 24 hrs?" — la rejilla arrancaba a las 07:00
@@ -251,6 +252,7 @@ cuatro de esa lista se pueden seguir respondiendo mientras tanto.
 
 | Fecha | Cambio |
 |---|---|
+| 2026-09-11 | **Arrastrar-y-soltar de la Vista de Semana confirmado por el dueño en su navegador.** Primera vez en el proyecto que se confirma cómo se SIENTE una superficie interactiva real (antes solo login/formularios): "se siente muy natural, funciona muy bien, mueve entre columnas sin retrasos". Cierra la última pieza sin verificar del primer incremento de la Fase 5b (ver DOCUMENTO_VIVO_ARQUITECTURA.md §14). Sin cambios de código — solo constancia de la confirmación. |
 | 2026-09-11 | **Vista de Semana corregida tras la primera revisión real del dueño: 24h completas + 17 reservas de demostración.** Retroalimentación positiva ("me agrada, incluso lo veo mejor formateado que el de Espiral") con dos hallazgos concretos: (1) la rejilla solo mostraba 07:00–21:00 — corregido a las 24 horas completas (`GRID_START_HOUR=0`/`GRID_END_HOUR=24` en `grid-math.ts`; las etiquetas de hora se generan sin el `+1` que habría duplicado la medianoche); (2) la única reserva sembrada vivía 3 meses en el futuro (2026-12-15, fecha fija de los scripts de prueba), así que abrir el panel en "hoy" mostraba una semana vacía — el dueño pidió explícitamente datos de prueba suficientes para revisar cada funcionalidad, **sin necesidad de borrarlos después: se quedan en el seed hasta producción**. Se agregó un 5º bloque a `seed.ts` (`DEMO_BOOKINGS`, 17 reservas con fechas FIJAS del 2026-09-07 al 2026-09-19 — nunca relativas a "hoy" en tiempo de ejecución, para que la siembra siga siendo idempotente y predecible): las 2 sucursales, los 3 recursos, y los 4 estados reales de una reserva. **Verificado con reinicio limpio TOTAL**: seed idempotente (18 `bookings` estables en 2 corridas seguidas), `GET /agenda?view=week&date=2026-09-09` real por curl → 9 bloques en Centro / 2 en Norte, exactamente 24 etiquetas de hora en el margen; sin regresión en núcleo (63/63), Jest backend (51/51), `auth-sweep.sh` (27/27), `agenda-e2e.sh` (23/23), ni las 16 pruebas del frontend. Documentado en `DOCUMENTO_VIVO_ARQUITECTURA.md` §14. |
 | 2026-09-11 | **Fase 5b, 1er incremento: cimientos + Vista de Semana con arrastrar y soltar.** Con la Fase 5b desbloqueada, se construyó en orden: `ViewSwitcher`/`DateNav` (vista y fecha viven en `?view=`/`?date=`, mismo criterio que `?cal=`), `BookingBlock` (chip reutilizable) y dos archivos de aritmética pura — `lib/calendar-nav.ts` (fronteras de día/semana/mes conscientes de zona horaria, con `Intl` en vez de reimportar `@omniagenda/core` al frontend) y `lib/grid-math.ts` (convertir un arrastre en píxeles a minutos/columnas). La **Vista de Semana** es la primera vista real: arrastrar-y-soltar con **Pointer Events escritos desde cero** (nunca el HTML5 Drag&Drop nativo, sin "sensación física", ni ninguna librería) — mueve con `transform`, confirma con `PATCH /calendars/:id/bookings/:id`, y **revierte con la animación `oa-shake`** si el backend responde un conflicto real (409) o sin permiso (403): el backend sigue siendo la única fuente de verdad. Incluye una **alternativa real de teclado** (flechas, mismo camino optimista+PATCH — WCAG 2.1, no decorativa); un hallazgo real durante la construcción: envolver el bloque en OTRO `div` sin posición propia habría dejado el foco de teclado en un elemento invisible (los punteros seguirían funcionando por *bubbling*, el teclado no) — corregido pasando los manejadores directo al elemento con tamaño real. El frontend gana su **primer runner de pruebas** (`node:test`+`tsx`, igual que el núcleo): **26 pruebas** nuevas. Agenda formaliza la lista que ya existía en 5a; Día/Mes/Línea de tiempo muestran un aviso honesto de "no construida todavía" en la propia UI, nunca una vista simulada. **Verificado con reinicio limpio TOTAL**: `tsc`/`next build` limpios, login real por curl → la reserva sembrada real dentro de la rejilla con su `aria-label`, sin regresión en núcleo (63/63), Jest backend (51/51), `auth-sweep.sh` (27/27) ni `agenda-e2e.sh` (23/23). Documentado en `DOCUMENTO_VIVO_ARQUITECTURA.md` §14. **Sigue pendiente sin navegador**: la sensación física real del arrastre. |
 | 2026-09-11 | **Confirmación visual de la Fase 5a recibida — Fase 5b desbloqueada.** El dueño abrió `http://localhost:3061` y confirmó: "se ve bien" — pero con una precisión importante: "aún creo que no tiene nada, funcional pero da información del sistema y permite entrar a la zona admin". Esa observación es correcta y esperada: la Fase 5a era deliberadamente solo cimientos (sesión real, panel protegido, selector de sucursal), nunca el producto — la falta de contenido sustantivo es exactamente el trabajo que le toca a la Fase 5b (las 5 vistas de calendario + arrastrar y soltar), no un defecto de lo construido. Con esta confirmación, el único bloqueo pendiente para la Fase 5b queda cerrado. |

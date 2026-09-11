@@ -806,10 +806,13 @@ Jest solo para el frontend.
   honesto de "todavía no construida" en vez de simular una vista que no existe.
 - Suites existentes sin regresión tras el rebuild total: núcleo 63/63, backend Jest 51/51,
   `auth-sweep.sh` 27/27, `agenda-e2e.sh` 23/23, checks SQL de Fase 2.
-- **Lo que sigue sin poder verificarse (sin navegador en esta sesión)**: la sensación física real
-  del arrastre, que el `transform` se sienta a 60fps, y que el foco de teclado se vea correctamente
-  en el DOM real — mismo límite ya declarado desde la Fase 5a, ahora aplicado a una superficie
-  interactiva de verdad (antes solo aplicaba a formularios y navegación).
+- **Confirmado por el dueño en su propio navegador (2026-09-11):** "se siente muy natural,
+  funciona muy bien, mueve entre columnas sin retrasos" — la sensación física del arrastre, el
+  cambio de columna (día) y de fila (hora) en tiempo real, todo sin el retraso que sí tiene el
+  Drag & Drop nativo del navegador. Es la primera vez en el proyecto que se confirma "cómo se
+  siente" una superficie interactiva real, no solo login/formularios. Sigue sin poder verificarse
+  a simple vista en esta sesión (no cambia el trabajo pendiente): que el foco de teclado se vea
+  correctamente en el DOM real.
 
 ### Corrección tras la primera revisión real del dueño (2026-09-11)
 

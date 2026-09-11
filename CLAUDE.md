@@ -12,10 +12,10 @@
 > §13, trabajo de backend puro. **Confirmación visual de la Fase 5a recibida (2026-09-11):** el
 > dueño confirmó que se ve bien, señalando correctamente que "aún no tiene nada" de contenido
 > real — exactamente lo esperado de unos cimientos. **Fase 5b en construcción, una vista a la
-> vez: Vista de Semana (rejilla de 24h + arrastrar-y-soltar real) hecha y corregida tras revisión
-> real del dueño (2026-09-11)** — ver §14; faltan Día, Mes y Línea de tiempo. Seed con **17
-> reservas de demostración fijas** (2026-09-07 a 2026-09-19), pensadas para quedarse hasta
-> producción, no para borrarse.
+> vez: Vista de Semana (rejilla de 24h + arrastrar-y-soltar real) hecha, corregida y **confirmada
+> en navegador real por el dueño** ("se siente muy natural, funciona muy bien") — ver §14; faltan
+> Día, Mes y Línea de tiempo. Seed con **17 reservas de demostración fijas** (2026-09-07 a
+> 2026-09-19), pensadas para quedarse hasta producción, no para borrarse.
 
 **Motor de agenda replicable + aplicación real que lo demuestra.** El núcleo (`omniagenda_core`)
 es lo que después sirve de base para construir agendas de negocio reales: reservación de
