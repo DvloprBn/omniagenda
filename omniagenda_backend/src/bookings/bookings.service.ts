@@ -53,7 +53,6 @@ export class BookingsService {
 
     const blocking = dto.blocking ?? true;
     const status = dto.status ?? 'pendiente';
-    const bufferMs = (dto.buffer_minutes ?? 0) * 60_000;
 
     // 1. Pre-chequeo de aplicación.
     const soft = await this.preflightConflict({
@@ -61,7 +60,6 @@ export class BookingsService {
       resourceIds: dto.resource_ids,
       interval: { start: start.getTime(), end: end.getTime() },
       bufferMinutes: dto.buffer_minutes ?? 0,
-      bufferMs,
     });
 
     // 2. Escritura atómica — la EXCLUDE es la garantía real.
@@ -118,7 +116,6 @@ export class BookingsService {
       resourceIds,
       interval: { start: start.getTime(), end: end.getTime() },
       bufferMinutes: dto.buffer_minutes ?? 0,
-      bufferMs: (dto.buffer_minutes ?? 0) * 60_000,
       ignoreBookingId: bookingId,
     });
 
@@ -209,17 +206,34 @@ export class BookingsService {
     if (inactive.length) throw new BadRequestException('Alguno de los recursos está inactivo');
   }
 
-  /** Corre `evaluateConflict` de `@omniagenda/core`. Lanza 409 si hay conflicto DURO; devuelve los BLANDOS como avisos. */
+  /**
+   * Corre `evaluateConflict` de `@omniagenda/core`. Lanza 409 si hay
+   * conflicto DURO (traslape real, o colchón ENTRE calendarios violado —
+   * ver `crossCalendarBufferMinutes` en el núcleo); devuelve los BLANDOS
+   * (colchón general) como avisos.
+   */
   private async preflightConflict(args: {
     calendarId: string;
     resourceIds: string[];
     interval: Interval;
     bufferMinutes: number;
-    bufferMs: number;
     ignoreBookingId?: string;
   }): Promise<ResourceBooking[]> {
-    const windowStart = new Date(args.interval.start - args.bufferMs - MAX_BUFFER_MS);
-    const windowEnd = new Date(args.interval.end + args.bufferMs + MAX_BUFFER_MS);
+    // El colchón ENTRE CALENDARIOS es una propiedad del RECURSO (cuánto
+    // tarda en trasladarse), no algo que decide quien agenda — igual que
+    // `location_change_buffer_minutes` en Espiral vive en el artista, no
+    // en la cita. Simplificación documentada en el núcleo: un solo valor
+    // para toda la reserva — se toma el máximo entre los recursos
+    // involucrados (la restricción más conservadora).
+    const resourceRows = await this.prisma.resources.findMany({
+      where: { resource_id: { in: args.resourceIds } },
+      select: { calendar_switch_buffer_minutes: true },
+    });
+    const crossCalendarBufferMinutes = resourceRows.reduce((max, r) => Math.max(max, r.calendar_switch_buffer_minutes), 0);
+    const widestBufferMs = Math.max(args.bufferMinutes, crossCalendarBufferMinutes) * 60_000;
+
+    const windowStart = new Date(args.interval.start - widestBufferMs - MAX_BUFFER_MS);
+    const windowEnd = new Date(args.interval.end + widestBufferMs + MAX_BUFFER_MS);
     const existingRows = await this.prisma.booking_resources.findMany({
       where: {
         resource_id: { in: args.resourceIds },
@@ -228,24 +242,38 @@ export class BookingsService {
         end_time: { gt: windowStart },
         ...(args.ignoreBookingId ? { booking_id: { not: args.ignoreBookingId } } : {}),
       },
-      select: { booking_id: true, resource_id: true, start_time: true, end_time: true, status: true, blocking: true },
+      select: {
+        booking_id: true, resource_id: true, start_time: true, end_time: true, status: true, blocking: true,
+        bookings: { select: { calendar_id: true } },
+      },
     });
     const existing: ResourceBooking[] = existingRows.map((r) => ({
       bookingId: r.booking_id,
       resourceId: r.resource_id,
+      calendarId: r.bookings.calendar_id,
       interval: { start: r.start_time.getTime(), end: r.end_time.getTime() },
       status: r.status,
       blocking: r.blocking,
     }));
 
     const report = evaluateConflict(
-      { resourceIds: args.resourceIds, interval: args.interval, bufferMinutes: args.bufferMinutes, ignoreBookingId: args.ignoreBookingId },
+      {
+        resourceIds: args.resourceIds,
+        calendarId: args.calendarId,
+        interval: args.interval,
+        bufferMinutes: args.bufferMinutes,
+        crossCalendarBufferMinutes,
+        ignoreBookingId: args.ignoreBookingId,
+      },
       existing,
     );
     if (!report.ok) {
+      const crossCalendar = report.hard.filter((h) => h.calendarId !== args.calendarId);
       throw new ConflictException({
-        message: 'El horario choca con otra reserva del mismo recurso',
-        conflicts: report.hard.map((h) => ({ booking_id: h.bookingId, resource_id: h.resourceId })),
+        message: crossCalendar.length
+          ? 'No da tiempo de trasladar el recurso desde/hacia otra sucursal en ese horario'
+          : 'El horario choca con otra reserva del mismo recurso',
+        conflicts: report.hard.map((h) => ({ booking_id: h.bookingId, resource_id: h.resourceId, calendar_id: h.calendarId })),
       });
     }
     return report.soft;

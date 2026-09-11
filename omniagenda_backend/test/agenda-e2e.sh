@@ -68,6 +68,26 @@ check "usuario (booker del demo) crea reserva en el demo -> 201/409" "ok" "$(c=$
 check "usuario NO es miembro de Cal E2E -> POST reserva 403" 403 "$(code -b "$JUSER" -X POST -H 'content-type: application/json' --data-raw "{\"starts_at\":\"2026-06-15T09:00:00-06:00\",\"ends_at\":\"2026-06-15T09:30:00-06:00\",\"resource_ids\":[\"$RID\"]}" "$API/calendars/$CID/bookings")"
 
 echo
+echo "== 6.5. colchón ENTRE SUCURSALES (vertical elegido: estética multisucursal) =="
+# Datos sembrados: el estilista de demo (45 min de colchón) atiende en
+# Centro (L-Sáb) y en Norte (mar/jue). El jueves 2026-07-16 abre en ambas.
+CAL_CENTRO=00000000-0000-4000-8000-00000000ca11
+CAL_NORTE=00000000-0000-4000-8000-00000000ca12
+R_VIAJERO=00000000-0000-4000-8000-0000000000e1
+# Fecha (2026-07-16, jueves) elegida A PROPOSITO fuera del 2026-12-15 que
+# usa la reserva de ejemplo del seed — nunca se toca esa fila.
+check "reserva en Centro 16:00-17:00" 201 "$(code -b "$JADMIN" -X POST -H 'content-type: application/json' --data-raw "{\"starts_at\":\"2026-07-16T16:00:00-06:00\",\"ends_at\":\"2026-07-16T17:00:00-06:00\",\"resource_ids\":[\"$R_VIAJERO\"]}" "$API/calendars/$CAL_CENTRO/bookings")"
+check "misma tarde, Norte 17:15 (solo 15 min despues, faltan 45) -> 409" 409 "$(code -b "$JADMIN" -X POST -H 'content-type: application/json' --data-raw "{\"starts_at\":\"2026-07-16T17:15:00-06:00\",\"ends_at\":\"2026-07-16T18:15:00-06:00\",\"resource_ids\":[\"$R_VIAJERO\"]}" "$API/calendars/$CAL_NORTE/bookings")"
+check "misma tarde, Norte 17:50 (45 min de margen) -> 201" 201 "$(code -b "$JADMIN" -X POST -H 'content-type: application/json' --data-raw "{\"starts_at\":\"2026-07-16T17:50:00-06:00\",\"ends_at\":\"2026-07-16T18:50:00-06:00\",\"resource_ids\":[\"$R_VIAJERO\"]}" "$API/calendars/$CAL_NORTE/bookings")"
+# limpieza de esta sección (nunca la reserva de ejemplo del seed, source_type='demo')
+for bid in $(curl -s -b "$JADMIN" "$API/calendars/$CAL_CENTRO/bookings?from=2026-07-16T00:00:00-06:00&to=2026-07-17T00:00:00-06:00" | python3 -c "import sys,json;[print(b['booking_id']) for b in json.load(sys.stdin) if b.get('source_type')!='demo']"); do
+  curl -s -b "$JADMIN" -X DELETE "$API/calendars/$CAL_CENTRO/bookings/$bid" -o /dev/null
+done
+for bid in $(curl -s -b "$JADMIN" "$API/calendars/$CAL_NORTE/bookings?from=2026-07-16T00:00:00-06:00&to=2026-07-17T00:00:00-06:00" | python3 -c "import sys,json;[print(b['booking_id']) for b in json.load(sys.stdin)]"); do
+  curl -s -b "$JADMIN" -X DELETE "$API/calendars/$CAL_NORTE/bookings/$bid" -o /dev/null
+done
+
+echo
 echo "== 7. limpieza =="
 # borrar reservas del calendario E2E y luego el calendario
 for bid in $(curl -s -b "$JADMIN" "$API/calendars/$CID/bookings?from=2026-01-01T00:00:00Z&to=2027-01-01T00:00:00Z" | python3 -c "import sys,json;[print(b['booking_id']) for b in json.load(sys.stdin)]"); do

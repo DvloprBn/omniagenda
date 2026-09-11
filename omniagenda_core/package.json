@@ -1,6 +1,6 @@
 {
   "name": "@omniagenda/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Motor de agenda replicable — algebra de intervalos, RRULE, disponibilidad, reglas de conflicto. TypeScript puro: sin Nest, sin Prisma, sin React.",
   "license": "UNLICENSED",
   "private": true,

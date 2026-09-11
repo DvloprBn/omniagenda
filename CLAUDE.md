@@ -5,8 +5,9 @@
 > [`../login/CLAUDE.md`](../login/CLAUDE.md) (2026-09-10) — mismo mentor técnico, adaptado de
 > e-commerce a **sistemas de agenda, reservación y disponibilidad**. **En construcción:** Fases 0
 > a 4 (infra · `omniagenda_core` · schema+`EXCLUDE` · identidad+permisos · API de agenda) hechas y
-> verificadas — ver [`ESTADO_PROYECTO.md`](./ESTADO_PROYECTO.md). Siguiente: Fase 5 (interfaz),
-> bloqueada por la pregunta abierta #2 (`PLAN_DESARROLLO.md` §11).
+> verificadas — ver [`ESTADO_PROYECTO.md`](./ESTADO_PROYECTO.md). **Negocio de demostración
+> decidido (2026-09-11): estética multisucursal** — ver `DOCUMENTO_VIVO_ARQUITECTURA.md` §11.
+> Siguiente: Fase 5 (interfaz), ya sin bloqueo.
 
 **Motor de agenda replicable + aplicación real que lo demuestra.** El núcleo (`omniagenda_core`)
 es lo que después sirve de base para construir agendas de negocio reales: reservación de

@@ -4,9 +4,9 @@
 > [`ESTADO_PROYECTO.md`](./ESTADO_PROYECTO.md); el detalle técnico de cada decisión, en
 > [`DOCUMENTO_VIVO_ARQUITECTURA.md`](./DOCUMENTO_VIVO_ARQUITECTURA.md).
 >
-> **v0.4 — 2026-09-11.** Estrategia cerrada; Fases 0 a 4 construidas y verificadas
-> (ver `ESTADO_PROYECTO.md`). Siguiente: Fase 5 (interfaz) — bloqueada por la pregunta abierta #2
-> (§11): el negocio de demostración concreto.
+> **v0.5 — 2026-09-11.** Estrategia cerrada; Fases 0 a 4 construidas y verificadas
+> (ver `ESTADO_PROYECTO.md`). Negocio de demostración decidido: **estética multisucursal**
+> (§11, pregunta #2, cerrada). Siguiente: Fase 5 (interfaz) — ya sin bloqueo.
 
 ---
 
@@ -405,15 +405,23 @@ física, cambio de mes sin salto. **Lenguaje visual:** se construye desde el mat
 | 2026-09-10 | ✅ **Fase 3 construida y verificada** — auth de OmniUser portada con toda su profundidad (login 3 pasos, 2FA TOTP, jerarquía de roles, fuerza bruta) + modelo **fail-closed** (`APP_GUARD` global + `@Public()`) + capa **nueva** de permisos por calendario (`calendar_members`, viewer/booker/manager) | Mejora sobre OmniUser: fail-closed desde ahora. Runner del backend = Jest (DI necesita decorator metadata; `tsx` no lo emite). `@omniagenda/core` se cablea en Fase 4 |
 | 2026-09-11 | ✅ **Fase 4 construida y verificada** — `@omniagenda/core` cableado en runtime (núcleo pasó a CommonJS); `bookings` como escritor único con `evaluateConflict` + `EXCLUDE` en transacción; `resources`/`calendars`/`schedule-rules`/`time-off`/`availability`; doble-reserva por la API real → 409 en vivo | Contexto de build del backend = raíz del repo (para incluir el núcleo). Pregunta abierta #2 (§11) se vuelve bloqueante para la Fase 5 |
 | 2026-09-10 | 🟡 **Punto de venta**: posible paquete complementario, no alcance de v1 | El dueño lo planteó como "quizá". Espiral ya tiene un POS real que serviría de base |
+| 2026-09-11 | ✅ **Negocio de demostración: estética multisucursal.** Restaurante multisucursal diferido a un caso de estudio futuro | El dueño preguntó cuál da un caso de estudio más completo. Se eligió el que **hace crecer al motor** (colchón entre calendarios) sobre el que solo ejercita lo ya construido. Ver `DOCUMENTO_VIVO_ARQUITECTURA.md` §11 |
+| 2026-09-11 | ✅ **Colchón entre calendarios construido** (`resources.calendar_switch_buffer_minutes`, generaliza `artists.location_change_buffer_minutes` de Espiral) — conflicto DURO, a diferencia del colchón general (blando) | Consecuencia directa de elegir el vertical multisucursal: sin esto, "multisucursal" seguía siendo solo una palabra en la demo. `omniagenda_core` subió a 0.2.0 (cambio de tipos) |
 
 ---
 
 ## §11. Preguntas abiertas
 
 1. **¿Entra el punto de venta y en qué fase?** Hoy marcado como paquete complementario futuro.
-2. **¿Cuál es el negocio de demostración de la Fase 9?** El anfitrión que prueba que el motor se
-   integra sin tocarse. Restaurante y estética son los candidatos: el restaurante ejercita
-   multi-recurso, la estética ejercita cobro en línea.
+2. ~~**¿Cuál es el negocio de demostración?**~~ **CERRADA — 2026-09-11.** El dueño eligió
+   **estética multisucursal**, con el restaurante multisucursal deliberadamente **diferido** (se
+   construye como caso de estudio después, no dentro de este proyecto). Razonamiento completo del
+   porqué en `DOCUMENTO_VIVO_ARQUITECTURA.md` §11 — en corto: la estética exige que el motor
+   **crezca una capacidad nueva** (el colchón entre calendarios, un recurso que se traslada entre
+   sucursales), mientras que el restaurante hubiera ejercitado capacidades que ya existían desde
+   la Fase 4 (multi-recurso, transacción atómica) sin hacerlas crecer. El restaurante multisucursal
+   queda anotado como un caso de estudio real y concreto para más adelante — no descartado, solo
+   fuera del alcance de este proyecto.
 3. **¿`dvloprbn.dev` ya está contratado?** El dueño lo da como el dominio del portafolio, pero
    señaló que todavía no hay dominio real. Define el subdominio de despliegue de la Fase 10.
 4. **¿El repositorio será público?** OmniUser sí lo será, y eso cambió decisiones reales ahí

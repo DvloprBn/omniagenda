@@ -9,7 +9,7 @@
  */
 
 /** Version del contrato publico. Sube cuando cambie una firma exportada. */
-export const OMNIAGENDA_CORE_VERSION = '0.1.0' as const;
+export const OMNIAGENDA_CORE_VERSION = '0.2.0' as const;
 
 // ── Algebra de tiempo ──────────────────────────────────────────────────
 export type { Interval } from './time/interval.js';

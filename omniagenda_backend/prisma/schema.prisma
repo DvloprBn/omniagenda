@@ -40,6 +40,15 @@ model resources {
   /// person | room | equipment | vehicle | other (validado en el DTO).
   kind        String   @default("person") @db.VarChar(30)
   active      Boolean  @default(true)
+  /// Colchon en MINUTOS que debe separar dos reservas de este recurso
+  /// cuando son de calendarios (sucursales) DISTINTOS — el "colchon de
+  /// traslado" de `artists.location_change_buffer_minutes` de Espiral,
+  /// generalizado: aqui vive en el recurso, no en un negocio concreto.
+  /// `0` (default) = el recurso nunca cambia de calendario, o no importa
+  /// si lo hace (ej. una sala no viaja). Es una restriccion FISICA — se
+  /// evalua como conflicto DURO en `evaluateConflict`, a diferencia del
+  /// colchon general (preferencia, blando). Ver DOCUMENTO_VIVO_ARQUITECTURA.md §11.
+  calendar_switch_buffer_minutes Int @default(0)
   created_at  DateTime @default(now()) @db.Timestamptz(6)
   updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 

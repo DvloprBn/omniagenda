@@ -95,6 +95,21 @@ por calendario. Pendiente: sesión de repaso guiado.
 - Pendiente para más adelante: **idempotencia** — por qué un webhook de pago (Fase 7) puede
   llegar dos veces.
 
+### El negocio de demostración y el colchón entre calendarios  ✅ 2026-09-11
+
+- **Cómo elegir entre dos diseños igual de "completos" en apariencia** —
+  `DOCUMENTO_VIVO_ARQUITECTURA.md` §11: la pregunta que de verdad decide no es "¿cuál tiene más
+  funcionalidades?" sino "¿cuál obliga al motor a **crecer** una capacidad nueva, en vez de solo
+  ejercitar lo que ya existe?".
+- **Imposibilidad física vs. preferencia, como categorías de diseño** —
+  `omniagenda_core/src/conflict/conflict.ts`: por qué el mismo concepto ("necesito X minutos de
+  margen") se modela distinto según lo que representa — un colchón que se puede ignorar es
+  BLANDO, uno que nadie puede violar (el tiempo real que toma trasladarse) es DURO, aunque el
+  código que los evalúa sea casi idéntico.
+- **Generalizar sin perder el caso original** — `resources.calendar_switch_buffer_minutes`: el
+  mismo problema que Espiral resolvió como `artists.location_change_buffer_minutes` (atado a un
+  negocio de tatuajes), ahora como una propiedad genérica de cualquier recurso.
+
 ### Fase 5 — Interfaz y animación
 - Por qué solo `transform` y `opacity` animan a 60fps, y qué hace el navegador con `width`.
 - `prefers-reduced-motion`: la animación como decisión de accesibilidad, no de gusto.

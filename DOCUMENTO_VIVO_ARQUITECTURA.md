@@ -4,8 +4,9 @@
 > aprendió. La estrategia vive en [`PLAN_DESARROLLO.md`](./PLAN_DESARROLLO.md); el día a día en
 > [`ESTADO_PROYECTO.md`](./ESTADO_PROYECTO.md).
 >
-> **v0.4 — 2026-09-10/11.** Cada sección lleva su estado: qué está implementado y verificado en
-> vivo (Fases 0–4) y qué sigue siendo diseño previo al código (Fases 5+).
+> **v0.5 — 2026-09-11.** Cada sección lleva su estado: qué está implementado y verificado en
+> vivo (Fases 0–4 + el negocio de demostración decidido, §11) y qué sigue siendo diseño previo al
+> código (Fases 5+).
 
 ---
 
@@ -466,3 +467,83 @@ huecos libres que resultan de restarlas.
   `@nest-lab/throttler-storage-redis` — nunca limpiaba nada, y correr dos scripts seguidos hacía
   que el límite de 5 login/min tronara con `429` (no una falla de la app: el limitador
   funcionando). Corregido a `FLUSHDB` — seguro aquí porque Redis solo guarda contadores efímeros.
+
+---
+
+## §11. El negocio de demostración: por qué estética y no restaurante
+
+**Decidido: 2026-09-11 · Estado: decisión cerrada + capacidad nueva del núcleo implementada y
+verificada en vivo.**
+
+### La pregunta real
+
+Al terminar la Fase 4, `PLAN_DESARROLLO.md` §11 (pregunta #2) se volvió bloqueante: la API es
+ciega al negocio, pero una pantalla (Fase 5) no puede serlo. El dueño preguntó, textualmente,
+cuál de los dos candidatos — **restaurante multisucursal** o **estética multisucursal** — es un
+caso de estudio "más completo", razonando que más funcionalidades ahora facilita adaptar mejor
+después.
+
+### Por qué "más funcionalidades" no es la métrica correcta
+
+Ambos verticales son legítimamente ricos. La pregunta que sí decide algo es otra: **¿cuál de los
+dos obliga al MOTOR a crecer una capacidad genuinamente nueva, en vez de solo ejercitar lo que ya
+existe?** — porque esa es la métrica real de "qué tan bien vamos a poder adaptar esto después".
+
+Verificado contra el código real antes de responder:
+
+| | Restaurante multisucursal | Estética multisucursal |
+|---|---|---|
+| ¿Las mesas/estilistas se mueven entre sucursales? | No — una mesa vive en una sola sucursal para siempre | **Sí** — un estilista real trabaja días distintos en sucursales distintas |
+| ¿El motor YA soporta que un recurso tenga horarios distintos en 2 calendarios? | (no aplica) | **Sí, desde la Fase 2** — `schedule_rules` ya es único por `(resource_id, calendar_id)` |
+| ¿Le falta algo al motor para modelar el vertical? | No — "multisucursal" ahí es solo *más calendarios en paralelo* | **Sí** — el colchón de traslado **entre** calendarios, que hoy no existe en ninguna parte |
+| Multi-recurso (unir mesas) | Ejercita algo que la Fase 4 **ya construyó** | — |
+| Depósito al agendar | Poco natural para una reservación de mesa normal | Natural — mismo flujo que Espiral ya valida en producción |
+| Turnos de personal | Más rico (cocina, meseros, hostess) | Más simple |
+
+Restaurante gana en turnos y en la narrativa de lista de espera. Pero su rasgo distintivo
+(multi-recurso, transacción atómica) **ya lo construyó la Fase 4** — lo demostraría, no lo haría
+crecer. Estética exige una pieza que **no existe todavía**: generalizar
+`artists.location_change_buffer_minutes` de Espiral (hoy atado a un negocio de tatuajes) en una
+capacidad real del núcleo. Esa es la clase de generalización que justifica que OmniAgenda exista.
+
+**Decisión del dueño (2026-09-11): estética multisucursal.** Restaurante multisucursal queda
+anotado como caso de estudio futuro real, no descartado — solo fuera de este proyecto.
+
+### La capacidad nueva: colchón ENTRE calendarios
+
+Generaliza `artists.location_change_buffer_minutes` + `AppointmentsService.assertLocationBuffer`
+de Espiral. Diferencia clave respecto al colchón general que ya existía desde la Fase 1
+(`ConflictCandidate.bufferMinutes`, una **preferencia** — reportada como conflicto BLANDO):
+cambiar de sucursal sin tiempo suficiente es una **imposibilidad física** — nadie se
+tele-transporta — así que se reporta como conflicto **DURO**, igual que un traslape real.
+
+**Dónde vive:**
+
+- `resources.calendar_switch_buffer_minutes` (migración `20260911012816`, `CHECK >= 0`) — es una
+  propiedad del **recurso**, no de quien agenda (igual que en Espiral: el artista lo configura
+  una vez, no se decide por cita). `0` (default) = el recurso no viaja entre calendarios, o no
+  importa si lo hace.
+- `omniagenda_core`: `ResourceBooking`/`ConflictCandidate` ganaron un campo `calendarId`, y
+  `ConflictCandidate` un `crossCalendarBufferMinutes`. `evaluateConflict` solo aplica este colchón
+  cuando el vecino es de **otro** calendario que el de la reserva candidata; el colchón general
+  sigue aplicando sin importar el calendario. **Cambio incompatible en los tipos públicos** →
+  `omniagenda_core` subió a `0.2.0`.
+- `BookingsService.preflightConflict`: calcula el valor efectivo como el **máximo** entre los
+  recursos que la reserva involucra — simplificación deliberada, documentada, igual criterio que
+  ya se usaba para el colchón general (un solo valor por reserva, no uno por recurso).
+
+**Verificado en vivo (reinicio limpio total, `down -v` + `--build`):**
+- Núcleo: **63 pruebas** (57 + 6 nuevas de colchón entre calendarios).
+- `bookings.service.test.ts`: 3 pruebas nuevas de integración (recurso con colchón de 30 min:
+  vecino de otra sucursal a 15 min → 409; a 45 min → ok; el mismo margen corto en la **misma**
+  sucursal no dispara nada).
+- `agenda-e2e.sh` §6.5, contra el seed real (estilista de demo, colchón de 45 min, atiende en
+  Centro L–Sáb y Norte mar/jue): una reserva en Centro seguida de otra en Norte 15 minutos
+  después → **409**; con 45 minutos de margen → **201**.
+- Las suites completas (Jest 43/43, `auth-sweep.sh` 27/27, checks de Fase 2) siguen verdes.
+
+### Lo que esto deja listo para la Fase 5
+
+El seed ahora siembra **2 sucursales reales** ("Centro" y "Norte", ficticias) con un estilista que
+trabaja en ambas — la interfaz de la Fase 5 tiene, desde el día uno, un caso real de multisucursal
+que mostrar, no uno que haya que inventar después.
