@@ -1,0 +1,13 @@
+# El contexto de build del backend es la raiz del repo (para poder copiar
+# omniagenda_core). Excluir todo lo que no debe entrar a la imagen.
+**/node_modules
+**/dist
+**/.next
+**/generated
+**/coverage
+**/documentation
+.git
+.env
+.env.*
+!.env.example
+*.log

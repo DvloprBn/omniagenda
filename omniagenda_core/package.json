@@ -4,7 +4,6 @@
   "description": "Motor de agenda replicable — algebra de intervalos, RRULE, disponibilidad, reglas de conflicto. TypeScript puro: sin Nest, sin Prisma, sin React.",
   "license": "UNLICENSED",
   "private": true,
-  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

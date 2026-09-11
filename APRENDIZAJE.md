@@ -76,9 +76,24 @@ por calendario. Pendiente: sesión de repaso guiado.
 - **Fuerza bruta** — `src/security-events/security-events.service.ts`: por qué el conteo vive en
   Redis (ventana deslizante) y solo el cruce del umbral se persiste.
 
-### Fase 4 — API
-- Transacción y atomicidad: por qué una reserva de dos mesas se guarda completa o no se guarda.
-- Idempotencia: por qué un webhook de pago puede llegar dos veces.
+### Fase 4 — API de agenda  ✅ construido 2026-09-11
+
+- **Transacción y atomicidad** — `omniagenda_backend/src/bookings/bookings.service.ts` (`create`):
+  por qué una reserva de dos recursos se guarda completa o no se guarda ninguna
+  (`$transaction` + `createMany`).
+- **Defensa en dos capas contra la condición de carrera** — el mismo archivo: por qué un
+  pre-chequeo en la aplicación (`evaluateConflict`, mensaje claro) NUNCA basta solo, y por qué la
+  `EXCLUDE` de la base dentro de la misma transacción es la que de verdad decide cuando dos
+  peticiones llegan casi al mismo tiempo (`translateWriteError` traduce la violación a un 409
+  legible).
+- **CommonJS vs. ESM** — por qué `omniagenda_core` cambió de `"type":"module"` a CommonJS para
+  que NestJS/Jest lo puedan `require()`, y qué significa en la práctica "un paquete se compila a
+  un formato u otro según `package.json`, no según cómo se escribió el código fuente".
+- **El "escritor único"** como patrón: por qué solo `BookingsService` toca
+  `booking_resources`, nunca otro módulo directo — mismo principio que
+  `EmployeeSchedulingService` de Dely Doggy.
+- Pendiente para más adelante: **idempotencia** — por qué un webhook de pago (Fase 7) puede
+  llegar dos veces.
 
 ### Fase 5 — Interfaz y animación
 - Por qué solo `transform` y `opacity` animan a 60fps, y qué hace el navegador con `width`.

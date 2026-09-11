@@ -18,9 +18,8 @@ code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
 # barrido hace varios logins seguidos, asi que limpia esas llaves de Redis
 # antes de correr — es un tool de desarrollo, se deja constancia aqui.
 if command -v docker >/dev/null; then
-  docker compose exec -T omniagenda_redis sh -lc \
-    'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning --scan --pattern "*login*" | xargs -r redis-cli -a "$REDIS_PASSWORD" --no-auth-warning del' \
-    >/dev/null 2>&1 || true
+  set -a; . "$(dirname "$0")/../../.env" 2>/dev/null; set +a
+  docker compose exec -e RP="${REDIS_PASSWORD:-}" -T omniagenda_redis sh -lc 'redis-cli -a "$RP" --no-auth-warning FLUSHDB' >/dev/null 2>&1 || true
 fi
 
 

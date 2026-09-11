@@ -57,8 +57,10 @@ services:
   # ---------- SERVICIO 3: BACKEND ----------
   omniagenda_backend:
     build:
-      context: ./omniagenda_backend
-      dockerfile: Dockerfile.dev
+      # Contexto = raiz del repo para poder incluir omniagenda_core (el
+      # backend lo importa como "@omniagenda/core"). Ver Dockerfile.dev.
+      context: .
+      dockerfile: omniagenda_backend/Dockerfile.dev
     container_name: omniagenda_backend
     restart: unless-stopped
     env_file:

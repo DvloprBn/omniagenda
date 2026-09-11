@@ -4,8 +4,9 @@
 > [`ESTADO_PROYECTO.md`](./ESTADO_PROYECTO.md); el detalle técnico de cada decisión, en
 > [`DOCUMENTO_VIVO_ARQUITECTURA.md`](./DOCUMENTO_VIVO_ARQUITECTURA.md).
 >
-> **v0.3 — 2026-09-10.** Estrategia cerrada; Fases 0, 1, 2 y 3 construidas y verificadas
-> (ver `ESTADO_PROYECTO.md`). Siguiente: Fase 4 (API de agenda).
+> **v0.4 — 2026-09-11.** Estrategia cerrada; Fases 0 a 4 construidas y verificadas
+> (ver `ESTADO_PROYECTO.md`). Siguiente: Fase 5 (interfaz) — bloqueada por la pregunta abierta #2
+> (§11): el negocio de demostración concreto.
 
 ---
 
@@ -344,7 +345,7 @@ Cada fase se **verifica de verdad** antes de la siguiente — nunca "arrancó si
 | **1** ✅ | `omniagenda_core` | Álgebra de intervalos, `RRULE`, disponibilidad, conflicto. **Sin base de datos** | **hecho 2026-09-10** — 57 pruebas `node:test` en ~185 ms, `tsc` limpio, riesgo #1 cerrado. Ver `ESTADO_PROYECTO.md` §1 |
 | **2** ✅ | Persistencia + la garantía real | Schema Prisma, migración con el `EXCLUDE` escrito a mano, `btree_gist` | **hecho 2026-09-10** — 6 modelos, `EXCLUDE` + 3 `CHECK` aplicados; `double_booking.sql` 6/6 PASS contra Postgres en vivo; `status-sync.mjs` PASS. Ver `ESTADO_PROYECTO.md` §1 |
 | **3** ✅ | Identidad y permisos | Auth portada de OmniUser + permisos por calendario, `APP_GUARD` fail-closed | **hecho 2026-09-10** — 31 pruebas Jest + `auth-sweep.sh` 27/27 + 2FA e2e. Ver `ESTADO_PROYECTO.md` §1 y `DOCUMENTO_VIVO_ARQUITECTURA.md` §9 |
-| **4** | API de agenda | Reservar, mover, cancelar, multi-recurso, conflicto duro/blando, turnos, tareas | Pruebas de integración contra PostgreSQL real, nunca mocks de Prisma |
+| **4** ✅ | API de agenda | Reservar, mover, cancelar, multi-recurso, conflicto duro/blando, turnos, tareas | **hecho 2026-09-11** — 40 pruebas Jest + `agenda-e2e.sh` 16/16 (doble-reserva real → 409). Ver `ESTADO_PROYECTO.md` §1 y `DOCUMENTO_VIVO_ARQUITECTURA.md` §10 |
 | **5** | Interfaz y animación | Las 5 vistas, arrastrar y soltar, lenguaje visual propio | Medición real de fotogramas, `prefers-reduced-motion`, teclado completo |
 | **6** | Recordatorios, `.ics`, lista de espera | Cron, correo real, suscripción de calendario | Correo real recibido; el `.ics` abre en un cliente real |
 | **7** | Cobro en línea | Depósito/anticipo con Stripe en modo prueba | Pago de prueba real de punta a punta |
@@ -402,6 +403,7 @@ física, cambio de mes sin salto. **Lenguaje visual:** se construye desde el mat
 | 2026-09-10 | ✅ **Fase 1 construida y verificada** — `omniagenda_core` con 57 pruebas verdes (tiempo, zona horaria, RRULE, disponibilidad, conflicto). Riesgo #1 (horizonte de materialización) cerrado en diseño con una constante única | TypeScript puro, `node:test` + `tsx`, sin framework. Distribución §6.3 resuelta. Commits locales; el dueño creará el repo público |
 | 2026-09-10 | ✅ **Fase 2 construida y verificada** — 6 modelos + migración con `EXCLUDE USING gist` y 3 `CHECK` escritos a mano; doble-reserva rechazada por PostgreSQL en vivo (6/6); `status-sync.mjs` confirma que la migración y `@omniagenda/core` dicen lo mismo | El cableado backend↔`@omniagenda/core` se movió a la Fase 4 (donde se usa de verdad). Seed con datos ficticios (repo público) |
 | 2026-09-10 | ✅ **Fase 3 construida y verificada** — auth de OmniUser portada con toda su profundidad (login 3 pasos, 2FA TOTP, jerarquía de roles, fuerza bruta) + modelo **fail-closed** (`APP_GUARD` global + `@Public()`) + capa **nueva** de permisos por calendario (`calendar_members`, viewer/booker/manager) | Mejora sobre OmniUser: fail-closed desde ahora. Runner del backend = Jest (DI necesita decorator metadata; `tsx` no lo emite). `@omniagenda/core` se cablea en Fase 4 |
+| 2026-09-11 | ✅ **Fase 4 construida y verificada** — `@omniagenda/core` cableado en runtime (núcleo pasó a CommonJS); `bookings` como escritor único con `evaluateConflict` + `EXCLUDE` en transacción; `resources`/`calendars`/`schedule-rules`/`time-off`/`availability`; doble-reserva por la API real → 409 en vivo | Contexto de build del backend = raíz del repo (para incluir el núcleo). Pregunta abierta #2 (§11) se vuelve bloqueante para la Fase 5 |
 | 2026-09-10 | 🟡 **Punto de venta**: posible paquete complementario, no alcance de v1 | El dueño lo planteó como "quizá". Espiral ya tiene un POS real que serviría de base |
 
 ---

@@ -11,29 +11,27 @@
 >
 > **Antes de repetir un error ya conocido:** [`../../DocumentacionProyecto/Bridge/`](../../DocumentacionProyecto/Bridge/).
 
-Última actualización: **2026-09-10** (Fase 3 completa — auth portada + permisos por calendario)
+Última actualización: **2026-09-11** (Fase 4 completa — API de agenda, núcleo cableado en runtime)
 
 ---
 
 ## 1. Dónde estamos
 
-**Fases 0, 1, 2 y 3 completas y verificadas.** Stack de 4 servicios OK; `omniagenda_core` con la
-lógica pura probada (57 pruebas); base de datos con los 6 modelos del motor + la garantía
-`EXCLUDE USING gist` comprobada en vivo; y **identidad + permisos**: auth portada de OmniUser con
-toda su profundidad (login 3 pasos, 2FA TOTP, jerarquía de roles, fuerza bruta) en modelo
-**fail-closed** (`APP_GUARD` global + `@Public()`), más una capa nueva de **permisos por
-calendario** (`calendar_members`: viewer/booker/manager).
+**Fases 0 a 4 completas y verificadas.** Stack de 4 servicios OK; `omniagenda_core` cableado al
+backend en runtime; base de datos con la garantía `EXCLUDE USING gist`; identidad + permisos por
+calendario; y ahora la **API de agenda real**: crear/mover/cancelar reservas (multi-recurso,
+transacción atómica, `409` real ante doble-reserva) + disponibilidad calculada por el núcleo.
 
 Estructura real en disco:
 
 | Carpeta / archivo | Estado |
 |---|---|
-| `docker-compose.yml` | ✅ 4 servicios (db 5439 · redis 6384 · backend 3060 · frontend 3061), Postgres/Redis solo `127.0.0.1`, `no-new-privileges`, healthchecks. `command` del backend: `prisma generate && migrate deploy && db seed && start:dev` |
+| `docker-compose.yml` | ✅ 4 servicios (db 5439 · redis 6384 · backend 3060 · frontend 3061). **Contexto de build del backend = raíz del repo** (Fase 4, para incluir `omniagenda_core`) |
 | `.env.example` / `.env` | ✅ `.env` local con contraseñas de prueba (gitignored) |
-| `omniagenda_core/` | ✅ **Fase 1** — paquete `@omniagenda/core` 0.1.0. `time/` · `recurrence/` · `conflict/` · `availability/`. 57 pruebas `node:test` + `tsx`, `tsc` limpio, `dist/` compila |
-| `omniagenda_backend/prisma/` | ✅ **Fase 2+3** — `schema.prisma` con **13 modelos** (6 del motor + 7 de auth/permisos); 3 migraciones, dos con bloque SQL **a mano** (`btree_gist` + `EXCLUDE` + 3 `CHECK` de tiempo; `CHECK` de `calendar_role`); `seed.ts` idempotente = 6 roles + 6 cuentas de prueba + demo + membresías; `checks/double_booking.sql` + `checks/status-sync.mjs` |
-| `omniagenda_backend/src/` | ✅ **Fase 3** — módulos `auth` (login 3 pasos, refresh con rotación+gracia, cambio/reset de contraseña), `two-factor` (TOTP + 10 códigos de recuperación), `roles`, `users` (jerarquía `level`/`max_count`), `security-events` (fuerza bruta en Redis), `mail` (Resend), `calendar-access` (**nuevo** — `CalendarAccessService` + `@CalendarRole` + `CalendarAccessGuard` + `/calendars/:id/members`), `common/utils` (AES-256-GCM, TOTP, escapeHtml). `APP_GUARD` global: Throttler → JwtAuth (fail-closed) → Roles. **No importa `omniagenda_core` aún** — se cablea en Fase 4 |
-| `omniagenda_backend/test/` | ✅ **Fase 3** — 6 archivos Jest (31 pruebas: 3 puros portados + `roles`/`users` de integración portados + `calendar-access` nuevo) + `auth-sweep.sh` (barrido de control de acceso, 27 casos) |
+| `omniagenda_core/` | ✅ **Fase 1**, ahora **CommonJS** (Fase 4: se quitó `"type":"module"` para que NestJS/Jest lo importen con `require()`). 57 pruebas `node:test` + `tsx` siguen verdes |
+| `omniagenda_backend/prisma/` | ✅ **Fase 2+3** — `schema.prisma` con **13 modelos**; 3 migraciones, dos con bloque SQL a mano; `seed.ts` idempotente; `checks/double_booking.sql` + `checks/status-sync.mjs` |
+| `omniagenda_backend/src/` | ✅ **Fase 3**: `auth`/`two-factor`/`roles`/`users`/`security-events`/`mail`/`calendar-access` (`@Global()`), `APP_GUARD` fail-closed. **Fase 4 (nuevo)**: `resources`, `calendars` (crear = quedar `manager`), `schedule-rules`, `time-off`, `bookings` (**el escritor único** — pre-chequeo con `evaluateConflict` + la `EXCLUDE` como backstop dentro de `$transaction`), `availability` (`computeAvailability` del núcleo). **`@omniagenda/core` ya se importa en runtime** — `Dockerfile.dev` lo copia y construye como paso previo (`file:../omniagenda_core`, symlink en `node_modules`) |
+| `omniagenda_backend/test/` | ✅ 7 archivos Jest (**40 pruebas**: los 6 de Fase 3 + `bookings.service.test.ts` nuevo) + `auth-sweep.sh` (27 casos) + `agenda-e2e.sh` **nuevo** (16 casos por HTTP real, el caso central: doble-reserva → `409`) |
 | `omniagenda_frontend/` | ✅ Next.js 16.3.1 + React 19.2.4 + Tailwind 4, cabeceras de seguridad, página de estado que consulta `/health` |
 
 **Modelo de datos (Fase 2):** `resources` (persona/sala/equipo/… — ciego al negocio) · `calendars`
@@ -77,11 +75,26 @@ opcional, uno por par recurso-calendario) · `time_off` (rango de días, `CHECK 
   Alpine de Postgres/Redis — locale, overcommit — idénticos en los proyectos hermanos).
 - `docker compose down` deja los volúmenes: el próximo `up` reusa los datos.
 
-**Lo que NO existe todavía (a propósito, por fase):** el backend **no importa `@omniagenda/core`
-en runtime** todavía (Fase 4 — la API de reservas, donde se usa `evaluateConflict`) · endpoints
-de reservas / horarios / disponibilidad (Fase 4) · frontend de login (Fase 5) · cron / correo
-real / `.ics` (Fase 6) · Stripe (Fase 7) · servicios de documentación en el compose (Fase 8).
-`RESEND_API_KEY` es un placeholder — el flujo de correo es real pero no entrega.
+**Verificación Fase 4 (2026-09-11), reinicio limpio TOTAL (`down -v` + `--build`):**
+- El backend construye el núcleo dentro de su propia imagen y lo `require()` en runtime —
+  `nest build` **0 errores**.
+- **40 pruebas Jest** verdes (7 archivos, incluido `bookings.service.test.ts`): transacción con
+  rollback real ante traslape (sin fila huérfana en `bookings`), espejo sincronizado,
+  multi-recurso atómico, mover a hueco libre / a uno ocupado, cancelar libera el horario, bloque
+  no-bloqueante, ventana inválida.
+- **`agenda-e2e.sh` 16/16 PASS** contra la API real por HTTP: recurso + calendario (el creador
+  queda `manager`) + horario semanal → **una reserva solapada por la API real recibe `409`** →
+  adyacentes conviven → multi-recurso atómico (si un solo recurso choca, la reserva entera falla)
+  → mover y cancelar liberan el horario → disponibilidad calculada por `@omniagenda/core` →
+  permisos por calendario respetados en los endpoints de reservas (403 fuera de membresía).
+- Las suites de Fases 2 y 3 siguen verdes tras el reinicio total.
+- Corregido un bug en los propios scripts de verificación: el flush de Redis no limpiaba nada
+  (patrón que no coincidía con las llaves reales del throttler) → `FLUSHDB`.
+
+**Lo que NO existe todavía (a propósito, por fase):** frontend de login/agenda (Fase 5) · cron /
+correo real / `.ics` (Fase 6) · Stripe (Fase 7) · servicios de documentación en el compose
+(Fase 8) · negocio de demostración concreto para la Fase 9. `RESEND_API_KEY` es un placeholder —
+el flujo de correo es real pero no entrega.
 
 ---
 
@@ -117,27 +130,29 @@ ocurriendo esta vez en el código en lugar de en la documentación. Detalle comp
 
 ## 4. Próximo paso
 
-**Fase 4 — API de agenda.** Los endpoints que **consumen** lo de las fases 1–3: crear / mover /
-cancelar reservas (multi-recurso, transacción atómica), gestionar `schedule_rules` y `time_off`,
-calcular disponibilidad. Aquí se **cablea `@omniagenda/core` al backend en runtime** (dependencia
-local + copia de `dist/` al contexto de Docker) y se usa `evaluateConflict` / `computeAvailability`.
-El "único servicio escritor" que mantiene el espejo `booking_resources` sincronizado con
-`bookings`. Cada endpoint de calendario pasa por `@CalendarRole(...)` + `CalendarAccessGuard`.
-Verificación: pruebas de integración contra Postgres real (nunca mocks de Prisma) + un intento
-de doble-reserva por la API real rechazado.
+**Fase 5 — Interfaz y animación.** Las 5 vistas de calendario (día/semana/mes/agenda/línea de
+tiempo), arrastrar y soltar, lenguaje visual propio en CSS puro (ver `PLAN_DESARROLLO.md` §9) —
+la primera pantalla real que sustituye a la página de estado de la Fase 0. Consume la API de la
+Fase 4 vía `INTERNAL_API_URL`/`NEXT_PUBLIC_API_URL` ya configurados.
+
+> ⚠️ **Aquí sí se vuelve bloqueante la pregunta abierta #2** de `PLAN_DESARROLLO.md` §11: ¿cuál
+> es el negocio de demostración concreto (restaurante / estética / clínica de tatuajes)? La API
+> es ciega al negocio, pero una pantalla no puede serlo — necesita etiquetas y un flujo concreto
+> para poder diseñarse. Sin esta respuesta no se puede empezar la Fase 5.
 
 **Cómo correr lo que ya existe:**
 ```
 cd /home/bn/DvloprBn/dvlopmnt/Planner
-# Núcleo (no necesita Docker — TypeScript puro):
+# Núcleo (no necesita Docker — TypeScript puro, ahora CommonJS):
 cd omniagenda_core && npm install && npm test && npm run typecheck && npm run build
-# Stack + base de datos:
+# Stack + base de datos (el backend construye el núcleo dentro de su propia imagen):
 cd .. && cp .env.example .env          # solo la 1ª vez; rellena las contraseñas + secretos
 docker compose up -d --build           # migra + siembra; frontend :3061 · api :3060
 # Pruebas y comprobaciones (con el stack arriba):
-docker compose exec -T omniagenda_backend npm test              # 31 pruebas Jest
+docker compose exec -T omniagenda_backend npm test              # 40 pruebas Jest
 docker compose exec -T omniagenda_backend npm run build         # typecheck completo
 bash omniagenda_backend/test/auth-sweep.sh                       # 27 casos de control de acceso
+bash omniagenda_backend/test/agenda-e2e.sh                       # 16 casos de la API de agenda
 docker compose exec -T omniagenda_db psql -U omniagenda_user -d omniagenda_db \
   -v ON_ERROR_STOP=1 -f - < omniagenda_backend/prisma/checks/double_booking.sql
 node omniagenda_backend/prisma/checks/status-sync.mjs
@@ -152,9 +167,9 @@ staff/usuario), contraseña `TestOnly123!`. `staff` es `manager` del calendario 
 
 ## 5. Preguntas abiertas que bloquean algo
 
-Ninguna bloquea la Fase 0. Las cinco de `PLAN_DESARROLLO.md` §11 se pueden responder mientras se
-construye la infraestructura. La primera que se vuelve bloqueante es **cuál es el negocio de
-demostración**, y lo hace hasta la Fase 5 (interfaz).
+**Bloquea ahora mismo, para poder empezar la Fase 5:** cuál es el negocio de demostración
+concreto (pregunta abierta #2 de `PLAN_DESARROLLO.md` §11). Las otras cuatro de esa lista se
+pueden seguir respondiendo mientras tanto.
 
 ---
 
@@ -162,6 +177,7 @@ demostración**, y lo hace hasta la Fase 5 (interfaz).
 
 | Fecha | Cambio |
 |---|---|
+| 2026-09-11 | **Fase 4 (API de agenda) — completa y verificada en vivo.** Se cableó `@omniagenda/core` al backend en runtime (pendiente desde Fase 2): contexto de build del backend pasó a la raíz del repo, `Dockerfile.dev` copia y construye el núcleo como paso previo (`file:../omniagenda_core`, symlink en `node_modules`). **Cambio real al núcleo que esto forzó**: dejó de ser `"type":"module"` (ESM) — ahora **CommonJS** — para que NestJS y Jest lo importen con `require()` sin gimnasia de ESM; las 57 pruebas del núcleo no se afectaron. 6 módulos nuevos: `resources` (CRUD, rol global), `calendars` (crear → el creador queda `manager`; listar según membresía/visibilidad/admin), `schedule-rules` (horario semanal por recurso-calendario), `time-off` (ausencias de calendario o de recurso), `bookings` — **el escritor único** de `bookings`+`booking_resources`, con dos capas de defensa: `evaluateConflict` del núcleo como pre-chequeo (mensaje claro) + la `EXCLUDE` de PostgreSQL dentro de `$transaction` como backstop real contra condiciones de carrera (rollback sin fila huérfana); multi-recurso atómico; mover/cancelar reescriben el espejo. `availability` — `computeAvailability` del núcleo sobre horario+ausencias+ocupado+colchón. Todo gateado por `@CalendarRole`+`CalendarAccessGuard` (o rol global donde el recurso es del sistema). La disponibilidad sigue siendo un dato personal: un `busy_only` visto sin membresía real oculta título/creador/origen. **Verificado con reinicio limpio TOTAL** (`down -v` + `--build`): `require('@omniagenda/core')` funciona en el contenedor, `nest build` 0 errores, **40 pruebas Jest** (7 archivos, +`bookings.service.test.ts`), **`agenda-e2e.sh` nuevo, 16/16 PASS** por HTTP real — el caso central: **doble-reserva por la API real → `409`**; adyacentes conviven; multi-recurso atómico; mover/cancelar liberan horario; disponibilidad real; permisos por calendario respetados. Las suites de Fases 2 y 3 siguen verdes. **Bug corregido en los propios scripts de prueba**: el flush de Redis no limpiaba nada (patrón equivocado) → `FLUSHDB`. |
 | 2026-09-10 | **Fase 3 (Identidad y permisos) — completa y verificada en vivo.** Núcleo de auth **portado de OmniUser con toda su profundidad** (feedback explícito del dueño, sin base recortada): registro público, login en 3 pasos (correo→contraseña→2FA TOTP), refresh token opaco con rotación + ventana de gracia 30 s + revocación en cascada ante reuso, cambio/reset de contraseña, **2FA real** (setup con QR, 10 códigos de recuperación de un solo uso hasheados, secreto TOTP cifrado AES-256-GCM con llave distinta de `JWT_SECRET`), **jerarquía de roles** (`level` 0–5, `max_count`), **detección de fuerza bruta** (login/2FA/reuso de refresh) con conteo en Redis + alerta a admin/super, anti-enumeración. **Mejora sobre OmniUser: modelo fail-closed** — `JwtAuthGuard` es `APP_GUARD` global (toda ruta exige sesión salvo `@Public()` explícito), `RolesGuard` global; orden Throttler→JwtAuth→Roles. **Nuevo, sin equivalente en OmniUser: `calendar_members`** — permisos por calendario (viewer/booker/manager) encima del rol global: admin/director/super son manager implícito en todos; `CalendarAccessService` (exportado para Fase 4) + `@CalendarRole` + `CalendarAccessGuard` + `/calendars/:id/members`; `allowByVisibility` para lectura pública acotada; `CHECK (calendar_role IN …)` a mano. Migración `20260910213848_add_auth_and_calendar_permissions` (7 tablas + `bookings.created_by` + el `CHECK`). `seed.ts` fusionado: 6 roles + 6 cuentas de prueba (`<rol>+omniagenda@example.com`, `TestOnly123!`) + demo + 2 membresías. Deps nuevas: `@nestjs/jwt`/`passport`/`passport-jwt`/`@nestjs/throttler`/`@nest-lab/throttler-storage-redis`/`bcryptjs`/`otplib`/`qrcode`/`resend`/`ms`/`@nestjs/swagger`. **Runner de pruebas del backend: Jest + ts-jest** (NestJS DI necesita `emitDecoratorMetadata`, que `tsx`/esbuild no emite; el cliente Prisma 7 usa imports `.js` ESM → `moduleNameMapper`, misma cura que OmniUser). `tsx` se conserva para el seed. **Verificado con reinicio limpio** (`down -v` → `up`): 3 migraciones desde cero, seed OK, `nest build` 0 errores, **31 pruebas Jest** verdes (6 archivos: crypto/totp/escapeHtml portados + roles/users de integración portados + `calendar-access` nuevo), **`auth-sweep.sh` 27/27** (toda ruta protegida 401 sin sesión, `@Public()` nunca 401, RolesGuard 403, matriz por calendario correcta), **2FA end-to-end por curl** (setup→confirm→login pide 2FA→TOTP fresco→sesión; recovery code 1er uso 200 / 2º uso 401), y los `checks/` de Fase 2 siguen verdes. `RESEND_API_KEY` es placeholder (flujo real, no entrega). |
 | 2026-09-10 | **Fase 2 (Persistencia + la garantía real) — completa y verificada en vivo.** `schema.prisma` con los 6 modelos del motor, todos ciegos al negocio. Migración `20260910211526_init` generada con `prisma migrate dev --create-only` y luego **editada a mano** para añadir lo que el DSL de Prisma no expresa: `CREATE EXTENSION btree_gist`, `CHECK (starts_at < ends_at)` / `CHECK (start_time < end_time)` / `CHECK (start_date <= end_date)`, y la restricción central `no_overlapping_resource_bookings` — `EXCLUDE USING gist (resource_id WITH =, tstzrange(start_time, end_time) WITH &&) WHERE (blocking = true AND status NOT IN ('cancelada','rechazada','expirada'))`. `tstzrange` es `[)` por defecto → misma semántica semiabierta que `omniagenda_core`. `seed.ts` idempotente con datos de demo **ficticios** (el repo es público): 1 calendario "Estética", 3 recursos, 3 horarios, 1 reserva de ejemplo. `prisma db seed` añadido al `command` del compose; `seed` reactivado en `prisma.config.ts`. **Dos comprobaciones committeadas** en `omniagenda_backend/prisma/checks/`: `double_booking.sql` (6 casos contra Postgres en vivo, transacción con ROLLBACK) y `status-sync.mjs` (Node sin deps: falla si el `WHERE` de la migración y `NON_BLOCKING_STATUSES` dejan de coincidir — la prueba que faltó en Espiral). **Verificado con reinicio limpio** (`down -v` → `up`): cadena `generate→migrate→seed→nest` con 0 errores; `pg_constraint` confirma el `EXCLUDE` + 3 `CHECK`; 6/6 PASS en `double_booking.sql`; PASS en `status-sync.mjs`; `/health` ok, frontend 200. Se quitó el campo obsoleto `phase:0` de `/health`. **Movido a Fase 4** (decisión consciente): el cableado del backend para importar `@omniagenda/core` en runtime — se hace donde de verdad se usa (`evaluateConflict` en la API), no antes. |
 | 2026-09-10 | **Fase 1 (`omniagenda_core`) — completa, 57 pruebas verdes.** Paquete `@omniagenda/core` 0.1.0, TypeScript puro (sin Nest/Prisma/React). Módulos: `time/interval.ts` (rango semiabierto `[start,end)` en ms epoch — `overlaps` con `<`, no `<=`, para que dos citas seguidas no choquen), `time/interval-set.ts` (`normalize`/`subtract`/`intersect`/`freeWithin`/`expandEach`), `time/zoned.ts` (puente hora-de-pared ↔ instante con zona IANA vía `Intl`, sin librería; salvedad DST documentada, verticales de referencia sin DST), `recurrence/rrule.ts` (`expandRecurrence` — subconjunto RFC 5545: DAILY/WEEKLY/MONTHLY, INTERVAL, BYDAY, BYMONTHDAY con recorte a fin de mes, COUNT, UNTIL, EXDATE; avanza en reloj de pared, no en saltos fijos de 24 h; tope de 20 000 iteraciones), `recurrence/horizon.ts` (**cierra el riesgo #1**: `MATERIALIZATION_HORIZON_DAYS = 90` en una sola constante, con el razonamiento de la compensación escrito ahí), `conflict/status.ts` (`NON_BLOCKING_STATUSES = ['cancelada','rechazada','expirada']` — la constante única que la migración de Fase 2 tendrá que citar), `conflict/conflict.ts` (`evaluateConflict` — duro vs blando, multi-recurso, colchón de traslado, `ignoreBookingId` para reprogramar), `availability/weekly-hours.ts` + `availability/availability.ts` (patrón semanal JSON estilo `artist_locations.weekly_hours`; `apertura − ausencias − (ocupado+colchón) → filtrar cortos`). **Runner: `node:test` nativo + `tsx`**, cero framework (lo más coherente con "TS puro"). **Verificado**: `npm test` → 57/57 en ~185 ms; `tsc --noEmit` limpio; `npm run build` genera `dist/` sin los `.test`; smoke de `import('./dist/index.js')` → 31 exports. **Decisión §6.3 tomada**: paquete versionado, consumo local dentro del repo hasta que haya un consumidor externo; no se publica a registro todavía. `git init` local, sin remoto (el dueño creará el repo público). |

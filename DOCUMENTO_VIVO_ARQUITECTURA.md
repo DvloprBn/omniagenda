@@ -4,8 +4,8 @@
 > aprendió. La estrategia vive en [`PLAN_DESARROLLO.md`](./PLAN_DESARROLLO.md); el día a día en
 > [`ESTADO_PROYECTO.md`](./ESTADO_PROYECTO.md).
 >
-> **v0.3 — 2026-09-10.** Cada sección lleva su estado: qué está implementado y verificado en vivo
-> (Fases 0–3) y qué sigue siendo diseño previo al código (Fases 4+).
+> **v0.4 — 2026-09-10/11.** Cada sección lleva su estado: qué está implementado y verificado en
+> vivo (Fases 0–4) y qué sigue siendo diseño previo al código (Fases 5+).
 
 ---
 
@@ -85,9 +85,7 @@ significan lo mismo en la base y en el motor.
   coincidir**. Es la prueba que exige `PLAN_DESARROLLO.md` §3, del tipo que faltó en Espiral y
   causó una vulnerabilidad real.
 
-**Pendiente de Fase 4:** el "único servicio escritor" que mantiene el espejo
-`booking_resources.{start_time,end_time,status}` sincronizado con `bookings`, y la transacción
-atómica multi-recurso. Hoy el espejo se llena a mano (seed) / en las pruebas.
+**Cerrado en Fase 4:** `BookingsService` es el único servicio escritor — ver §10.
 
 ---
 
@@ -367,3 +365,104 @@ Los endpoints de reservas/horarios/disponibilidad que **consumen** `CalendarAcce
 `@omniagenda/core` en runtime (el cableado del paquete al backend se hace ahí). Frontend de
 login (Fase 5). `RESEND_API_KEY` real de prueba (hoy placeholder — el flujo de correo es real
 pero no entrega).
+
+---
+
+## §10. La API de agenda: el cableado del núcleo y el escritor único
+
+**Decidido: 2026-09-10/11 · Estado: implementado y verificado en vivo — Fase 4.**
+
+### Cablear `@omniagenda/core` al backend (pendiente desde la Fase 2)
+
+El contexto de build del backend cambió de `./omniagenda_backend` a la **raíz del repo**
+(`docker-compose.yml`), para que su `Dockerfile.dev` pueda copiar y construir
+`omniagenda_core` como paso previo:
+
+```dockerfile
+WORKDIR /usr/src/omniagenda_core
+COPY omniagenda_core/package*.json ./
+RUN npm install
+COPY omniagenda_core/ ./
+RUN npm run build         # genera dist/, lo que el backend importa
+
+WORKDIR /usr/src/app
+COPY omniagenda_backend/package*.json ./
+RUN npm install            # resuelve "@omniagenda/core": "file:../omniagenda_core"
+```
+
+`npm install` con un `file:` a un directorio crea un **symlink** (`node_modules/@omniagenda/core`
+→ `/usr/src/omniagenda_core`), no una copia — vive en la imagen, no en el volumen montado, así
+que cambiar el núcleo exige `docker compose build omniagenda_backend` (no hot-reload). Es un
+costo aceptado: el núcleo es la parte más estable del proyecto.
+
+**Cambio real al núcleo que esto forzó:** `omniagenda_core` pasó de `"type": "module"` (ESM) a
+**CommonJS** — se quitó ese campo del `package.json` y `verbatimModuleSyntax` a `false` en su
+`tsconfig`. Con `module: "nodenext"` y sin `"type": "module"`, `tsc` emite CJS y los
+especificadores `.js` del código siguen resolviendo a los `.ts` de origen. Motivo: NestJS (CJS) y
+Jest (vía `ts-jest`) importan el núcleo con `require()`; ESM puro habría exigido
+`--experimental-vm-modules` también para el núcleo y complicado el `moduleNameMapper` ya
+necesario para el propio cliente de Prisma 7. Las 57 pruebas del núcleo (`node:test`+`tsx`) no se
+vieron afectadas — corren igual sobre CJS.
+
+### El modelo, ciego al negocio, con permisos por calendario
+
+6 módulos nuevos, todos gateados por `@CalendarRole(...)` + `CalendarAccessGuard` (o por rol
+global donde el recurso es del sistema, no de un calendario):
+
+| Módulo | Ruta | Acceso |
+|---|---|---|
+| `resources` | `/resources` | lectura: cualquier sesión · escritura: rol global `manager`+ |
+| `calendars` | `/calendars` | lectura: propia (miembro/`public`/admin+) · creación: rol global `staff`+ (el creador queda `manager`) · edición/borrado: `manager` del calendario |
+| `schedule-rules` | `/calendars/:id/schedule-rules` | lectura: `viewer` · escritura: `manager` |
+| `time-off` | `/calendars/:id/time-off` | lectura: `viewer` · escritura: `manager` |
+| `bookings` | `/calendars/:id/bookings` | lectura: `viewer` (+ visibilidad) · creación/movimiento propio: `booker` · cualquier operación: `manager` |
+| `availability` | `/calendars/:id/availability` | `viewer` (+ visibilidad) |
+
+### `BookingsService`: el escritor único
+
+Cierra el pendiente de §1. Cada escritura de `bookings`/`booking_resources` pasa por **una** de
+tres operaciones (`create`/`reschedule`/`changeStatus`), siempre dentro de `$transaction`, y con
+**dos capas de defensa contra doble-reserva**:
+
+1. **Pre-chequeo de aplicación** — `evaluateConflict` de `@omniagenda/core`, contra las
+   `booking_resources` existentes que se traslapan (ventana ± colchón ± 24 h de margen). Da un
+   mensaje claro y **ya considera lo que el llamador le pase** — el hueco del riesgo #1
+   (ocurrencias recurrentes más allá del horizonte de materialización) se cierra aquí cuando la
+   Fase 6 empiece a pasarle ocurrencias virtuales.
+2. **La `EXCLUDE` de PostgreSQL, dentro de la transacción** — la garantía real contra la condición
+   de carrera. Si dos peticiones pasan el pre-chequeo casi al mismo tiempo, **una de las dos
+   pierde en la base**, la transacción entera hace `ROLLBACK` (no deja una fila huérfana en
+   `bookings`) y el error se traduce a `409` (`translateWriteError`, matching sobre
+   `no_overlapping_resource_bookings`/`23P01`).
+
+Una reserva multi-recurso es atómica por construcción: los N renglones de `booking_resources` se
+crean en el mismo `createMany` dentro de la transacción — si cualquiera choca, ninguno se guarda.
+
+### La disponibilidad sigue siendo un dato personal
+
+`AvailabilityService`/`BookingsService.list` implementan §4.1 en código: un calendario
+`busy_only` visto por alguien que **no** es miembro real (solo entra por visibilidad) recibe los
+bloques **sin** `title`/`created_by`/`source_*` — únicamente el rango de tiempo, el estado y qué
+recursos ocupa. El endpoint de disponibilidad **nunca** devuelve las reservas en sí, solo los
+huecos libres que resultan de restarlas.
+
+### Verificación (2026-09-10/11, reinicio limpio total `down -v` + rebuild)
+
+- `require('@omniagenda/core')` funciona dentro del contenedor del backend; `nest build` → **0
+  errores**.
+- **40 pruebas Jest** (7 archivos: los 6 de la Fase 3 + `bookings.service.test.ts` nuevo — mismo
+  criterio de integración real, sin mocks de Prisma): transacción con rollback real ante
+  traslape, mirror sincronizado, multi-recurso atómico, mover/cancelar, colchón, bloque
+  no-bloqueante, ventana inválida.
+- **`omniagenda_backend/test/agenda-e2e.sh`, 16/16 PASS** contra la API real por HTTP — el caso
+  central: **una reserva solapada por la API real recibe `409`**; adyacentes conviven;
+  multi-recurso atómico; mover a un hueco libre y a uno ocupado; cancelar libera el horario;
+  disponibilidad calculada de verdad por `@omniagenda/core`; matriz de permisos por calendario en
+  los endpoints de reservas.
+- Las suites de Fases 2 y 3 (`double_booking.sql`, `status-sync.mjs`, `auth-sweep.sh`) siguen
+  verdes tras el reinicio total.
+- **Hallazgo de los propios scripts de verificación, corregido**: el flush de Redis usaba un
+  patrón (`--scan --pattern "*login*"`) que no coincide con las llaves reales del throttler de
+  `@nest-lab/throttler-storage-redis` — nunca limpiaba nada, y correr dos scripts seguidos hacía
+  que el límite de 5 login/min tronara con `429` (no una falla de la app: el limitador
+  funcionando). Corregido a `FLUSHDB` — seguro aquí porque Redis solo guarda contadores efímeros.

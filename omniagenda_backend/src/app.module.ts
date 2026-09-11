@@ -16,6 +16,12 @@ import { RolesModule } from './roles/roles.module';
 import { UsersModule } from './users/users.module';
 import { SecurityEventsModule } from './security-events/security-events.module';
 import { CalendarAccessModule } from './calendar-access/calendar-access.module';
+import { ResourcesModule } from './resources/resources.module';
+import { CalendarsModule } from './calendars/calendars.module';
+import { ScheduleRulesModule } from './schedule-rules/schedule-rules.module';
+import { TimeOffModule } from './time-off/time-off.module';
+import { BookingsModule } from './bookings/bookings.module';
+import { AvailabilityModule } from './availability/availability.module';
 
 /**
  * FASE 3 — auth portada de OmniUser + permisos por calendario, modelo
@@ -49,6 +55,13 @@ import { CalendarAccessModule } from './calendar-access/calendar-access.module';
     UsersModule,
     SecurityEventsModule,
     CalendarAccessModule,
+    // ── Fase 4 — API de agenda ──
+    ResourcesModule,
+    CalendarsModule,
+    ScheduleRulesModule,
+    TimeOffModule,
+    BookingsModule,
+    AvailabilityModule,
   ],
   controllers: [AppController],
   providers: [

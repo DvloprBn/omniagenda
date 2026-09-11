@@ -1,20 +1,27 @@
-# Imagen de DESARROLLO — la usa docker-compose.yml, con hot-reload via
-# volumen montado. NO usar en produccion (instala devDependencies y corre
-# "npm run start:dev").
+# Imagen de DESARROLLO. El contexto de build es la RAIZ del repo (ver
+# docker-compose.yml: build.context) para poder copiar y construir
+# omniagenda_core, que el backend importa como "@omniagenda/core".
 FROM node:24-alpine
 
 # tini como PID 1: reenvia SIGTERM correctamente a Node y evita zombies.
 RUN apk add --no-cache tini
 
-WORKDIR /usr/src/app
-
-# Se instala como root ANTES de bajar de privilegios; el codigo se copia
-# con dueno "node". En dev, el volumen de docker-compose vuelve a montar
-# encima /usr/src/app y un volumen con nombre para node_modules.
-COPY package*.json ./
+# ---- 1. El nucleo: se copia y se construye su dist/ ----
+# El backend lo referencia como "file:../omniagenda_core" -> debe quedar en
+# /usr/src/omniagenda_core (hermano de /usr/src/app).
+WORKDIR /usr/src/omniagenda_core
+COPY omniagenda_core/package*.json ./
 RUN npm install
+COPY omniagenda_core/ ./
+RUN npm run build
 
-COPY --chown=node:node . .
+# ---- 2. El backend ----
+WORKDIR /usr/src/app
+COPY omniagenda_backend/package*.json ./
+# "npm install" resuelve "@omniagenda/core": "file:../omniagenda_core"
+# creando un symlink node_modules/@omniagenda/core -> /usr/src/omniagenda_core.
+RUN npm install
+COPY --chown=node:node omniagenda_backend/ ./
 
 USER node
 
