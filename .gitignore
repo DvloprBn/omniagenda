@@ -13,6 +13,7 @@ dist
 build
 .next
 out
+*.tsbuildinfo
 
 # Cliente de Prisma generado (generator "prisma-client") — se regenera, no se versiona.
 generated

@@ -143,11 +143,28 @@ por calendario. Pendiente: sesión de repaso guiado.
   ningún `:id` que un cliente pueda manipular; toda la consulta parte de `caller.userId`. Es la
   diferencia entre "esta ruta no necesita permisos especiales" y "esta ruta es insegura".
 
-### Fase 5b — Interfaz real y animación (pendiente)
+### Fase 5b — Vista de Semana y arrastrar-y-soltar  ✅ 1er incremento construido 2026-09-11
 - Por qué solo `transform` y `opacity` animan a 60fps, y qué hace el navegador con `width`.
 - `prefers-reduced-motion`: la animación como decisión de accesibilidad, no de gusto.
 - Layout shift (CLS) y por qué un esqueleto de carga más corto que la página real **es** el
   problema (lección #8 del Bridge, medida en producción real).
+- **Por qué el Drag & Drop nativo del navegador no sirve aquí** — su "fantasma" semitransparente
+  es del navegador, no de la aplicación: no hay control real sobre su posición ni su física.
+  Pointer Events (`pointerdown`/`pointermove`/`pointerup` + `setPointerCapture`) da control total
+  a cambio de escribir la lógica a mano — el intercambio correcto cuando "sensación física" es un
+  requisito real, no decorativo.
+- **Un wrapper sin posición propia colapsa a 0×0** — un hallazgo real de esta construcción: los
+  eventos de puntero en el bloque visible SÍ burbujean hasta un `div` contenedor sin tamaño (el
+  DOM no filtra eventos por superposición visual), pero el FOCO de teclado de ese mismo `div`
+  caería en un elemento invisible. La lección: el elemento interactivo (con `tabIndex`, `role`,
+  los manejadores) tiene que ser el mismo elemento que tiene la posición y el tamaño reales.
+- **Optimista, pero el backend decide** — mover un bloque se ve de inmediato (mejor sensación),
+  pero el movimiento se revierte si el `PATCH` real responde con un conflicto (`409`) o sin
+  permiso (`403`). El patrón ya usado en toda la Fase 4 (la `EXCLUDE` de Postgres como última
+  palabra) se repite aquí del lado de la interfaz: la UI propone, el servidor garantiza.
+- **Teclado no es un checkbox, es una ruta funcional completa** — la alternativa de teclado usa
+  el MISMO camino de datos que el arrastre con mouse (optimista + `PATCH` + revertir), en vez de
+  ser una implementación paralela más simple que se desincroniza con el tiempo.
 
 ### Fase 7 — Cobro en línea
 - Por qué un identificador de Stripe guardado puede dejar de existir del lado de Stripe

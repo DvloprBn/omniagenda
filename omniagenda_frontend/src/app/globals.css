@@ -142,6 +142,34 @@ body {
   background: var(--ink-100);
 }
 
+/* ── Fase 5b: rejilla de calendario y bloques arrastrables ───────────── */
+
+.oa-booking-block {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  border-radius: 8px;
+  padding: 0.25rem 0.4rem;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none; /* el arrastre lo maneja Pointer Events, no el scroll nativo */
+  user-select: none;
+  transition: transform var(--dur-base) var(--ease-out), opacity var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.oa-booking-block:focus-visible {
+  outline: 2px solid var(--brand-600);
+  outline-offset: 2px;
+  z-index: 20;
+}
+
+.oa-grid-row {
+  border-top: 1px solid var(--ink-100);
+}
+
+.oa-grid-col {
+  border-left: 1px solid var(--ink-100);
+}
+
 .oa-error {
   color: var(--bad-600);
   background: var(--bad-50);
@@ -207,5 +235,8 @@ body {
   }
   .oa-btn:active {
     transform: none;
+  }
+  .oa-booking-block {
+    transition: opacity var(--dur-fast) linear !important;
   }
 }

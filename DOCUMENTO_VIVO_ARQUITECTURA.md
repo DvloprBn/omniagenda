@@ -4,9 +4,10 @@
 > aprendió. La estrategia vive en [`PLAN_DESARROLLO.md`](./PLAN_DESARROLLO.md); el día a día en
 > [`ESTADO_PROYECTO.md`](./ESTADO_PROYECTO.md).
 >
-> **v0.7 — 2026-09-11.** Cada sección lleva su estado: qué está implementado y verificado en
+> **v0.8 — 2026-09-11.** Cada sección lleva su estado: qué está implementado y verificado en
 > vivo (Fases 0–4, el negocio de demostración decidido en §11, los cimientos de interfaz en §12,
-> y el vínculo recurso↔cuenta en §13) y qué sigue siendo diseño previo al código (Fase 5b+).
+> el vínculo recurso↔cuenta en §13, y el primer incremento de la Fase 5b — cimientos + Vista de
+> Semana — en §14) y qué sigue en construcción (el resto de la Fase 5b: Día/Mes/Línea de tiempo).
 
 ---
 
@@ -626,11 +627,13 @@ permite entrar a la zona admin"**. Eso es exactamente lo que la Fase 5a debía s
 contenido sustantivo que el dueño notó es el trabajo que le toca a la Fase 5b, no un defecto de
 lo ya construido. Con esta confirmación, **la Fase 5b queda desbloqueada**.
 
-### Pendiente — Fase 5b (desbloqueada)
+### Fase 5b — en construcción, una vista a la vez
 
 Las 5 vistas de calendario (día/semana/mes/agenda/línea de tiempo) + arrastrar y soltar. Esta es
 la parte que de verdad demuestra "animación de grado profesional" y la que llena de contenido
-real el panel — 5a solo construyó el piso sobre el que se para.
+real el panel — 5a solo construyó el piso sobre el que se para. Orden: cimientos compartidos +
+**Semana** (hecha, ver §14) → Día → Mes → Agenda (formaliza la lista que ya existía en 5a) →
+Línea de tiempo.
 
 ---
 
@@ -715,3 +718,99 @@ este calendario?".
   filtro correcto de rango `[from, to)`) — **51/51 tests del backend en verde**.
 - `test/agenda-e2e.sh` §6.6 (4 casos nuevos contra el stack real) y `test/auth-sweep.sh` (27
   casos) sin regresión.
+
+---
+
+## §14. Fase 5b, primer incremento: cimientos de las 5 vistas + Vista de Semana
+
+**Decidido: 2026-09-11 · Estado: implementado y verificado — cimientos completos, primera de las
+5 vistas (Semana) funcional con arrastrar-y-soltar real. Día/Mes/Línea de tiempo aún no
+construidas (marcadas honestamente como pendientes en la UI, nunca simuladas); Agenda formaliza
+la lista que ya existía en la Fase 5a.**
+
+### Arquitectura: estado en la URL, igual que el selector de sucursal
+
+`?view=semana|dia|mes|agenda|linea&cal=...&date=...` — la vista y la fecha activas viven en la
+URL, mismo criterio que `?cal=` de `BranchSwitcher` (Fase 5a): un enlace a "la vista de semana del
+15 de diciembre en Sucursal Centro" se puede compartir o recargar tal cual, nunca solo estado de
+React. `ViewSwitcher` y `DateNav` (nuevos) siguen ese patrón exacto.
+
+### Por qué Pointer Events escritos desde cero, y no el HTML5 Drag & Drop nativo
+
+El Drag & Drop nativo del navegador (`draggable="true"`, eventos `dragstart`/`dragover`/`drop`)
+existe, pero su retroalimentación visual es tosca por diseño (un "fantasma" semitransparente que
+el navegador dibuja, sin control real sobre su posición ni su física) — no puede cumplir el
+requisito de "sensación física" de `PLAN_DESARROLLO.md` §9, y ninguna librería de terceros es
+aceptable ahí tampoco. La alternativa: **Pointer Events** (`pointerdown`/`pointermove`/`pointerup`
++ `setPointerCapture`) manejados a mano en `week-view.tsx`, moviendo el bloque con
+`transform: translate()` en tiempo real (nunca `top`/`left` en cada frame — serían recálculo de
+layout, no composición en la GPU) y soltando en un horario "limpio" (redondeado a 15 min) al
+soltar el puntero.
+
+**El backend sigue siendo la única fuente de verdad.** El movimiento es optimista (el bloque se
+ve en su nueva posición de inmediato), pero se confirma con `PATCH
+/calendars/:id/bookings/:id` — si el backend responde con un conflicto real (`409`, la `EXCLUDE`
+o el colchón entre calendarios) o sin permiso (`403`), el bloque **regresa** a su lugar con la
+animación `oa-shake` que ya existía desde la Fase 5a. El frontend nunca decide por su cuenta que
+un horario es válido.
+
+### Alternativa de teclado — no decorativa
+
+`PLAN_DESARROLLO.md` §2.D exige "teclado completo" (WCAG 2.1), no una casilla marcada sin
+sustancia. Con un bloque enfocado (`tabIndex`, `role="button"`, `aria-label` que explica la
+acción), las flechas mueven la reserva por el **mismo camino** que el arrastre con mouse
+(optimista + `PATCH` + revertir si falla) — nunca queda como la única forma real de reprogramar
+sea con mouse o touch. Un hallazgo real durante la construcción: envolver el bloque arrastrable en
+OTRO `div` sin posición propia lo habría dejado colapsado a 0×0 — los punteros seguirían
+funcionando (el evento burbujea por el DOM sin importar el tamaño visual del contenedor), pero el
+foco de teclado habría caído en un elemento invisible, sin anillo de foco visible en ningún lugar
+real. Se corrigió pasando los manejadores directo al elemento con posición y tamaño reales
+(`BookingBlock` los recibe como props normales, sin envoltorio).
+
+### Aritmética de calendario: `Intl`, no `@omniagenda/core`, y por qué
+
+El frontend necesita etiquetas legibles con zona horaria real (nombre de día, hora, límites de
+"esta semana" en la zona del calendario) — la MISMA primitiva de plataforma (`Intl`) que
+`omniagenda_core/src/time/zoned.ts` envuelve para el backend, pero escrita de nuevo en
+`lib/calendar-nav.ts` en vez de importar el paquete: traer `@omniagenda/core` al frontend habría
+obligado a mover su build de Docker a la raíz del repo (el mismo cambio de infraestructura que ya
+se hizo para el backend en la Fase 4), solo para un puñado de funciones de etiquetado — el
+frontend no necesita la aritmética exacta de recurrencia que sí justifica el núcleo. Nunca se trata
+de código de terceros: es un envoltorio delgado, propio, sobre una API nativa de la plataforma.
+Separado en un segundo archivo puro (`lib/grid-math.ts`) el otro tipo de aritmética: convertir un
+desplazamiento de arrastre en píxeles a minutos/columnas — deliberadamente sin DOM ni React, para
+poder probarlo con `node:test` sin navegador.
+
+### El frontend gana un runner de pruebas real
+
+Hasta ahora `omniagenda_frontend` no tenía ningún test — la lógica de la Fase 5a era demasiado
+poco (fetch + render) para justificarlo. La aritmética de calendario y de rejilla sí es lógica
+real con casos límite reales (cruces de mes, redondeo de arrastre), así que se le da el MISMO
+runner que ya usa `omniagenda_core` — `node:test` nativo + `tsx`, cero framework — en vez de traer
+Jest solo para el frontend.
+
+### Verificado (2026-09-11, rebuild limpio desde cero — `down -v` + `--build`)
+
+- `tsc --noEmit` limpio; `next build` producción compila sin errores, rutas siguen clasificadas
+  correctamente.
+- **26 pruebas `node:test`** nuevas en `omniagenda_frontend/test/`: 10 de `calendar-nav.ts`
+  (medianoche/inicio de semana/inicio de mes en zona real, ventanas de vista sin huecos) + 6 de
+  `grid-math.ts` (redondeo de arrastre, conversión px↔minutos, recorte a la rejilla visible).
+- Con el stack completo reconstruido desde cero (migraciones + seed desde vacío): login real por
+  curl → `GET /agenda?view=week&cal=...&date=2026-12-15` → `200`, con la reserva real sembrada
+  ("Corte y peinado (demo)") renderizada dentro de la rejilla y su `aria-label` de accesibilidad
+  presente en el HTML devuelto.
+- `?view=agenda` conserva el comportamiento real de la Fase 5a (la lista de reservas, ahora
+  formalizada como una vista más); `?view=day|month|timeline` responden `200` con un aviso
+  honesto de "todavía no construida" en vez de simular una vista que no existe.
+- Suites existentes sin regresión tras el rebuild total: núcleo 63/63, backend Jest 51/51,
+  `auth-sweep.sh` 27/27, `agenda-e2e.sh` 23/23, checks SQL de Fase 2.
+- **Lo que sigue sin poder verificarse (sin navegador en esta sesión)**: la sensación física real
+  del arrastre, que el `transform` se sienta a 60fps, y que el foco de teclado se vea correctamente
+  en el DOM real — mismo límite ya declarado desde la Fase 5a, ahora aplicado a una superficie
+  interactiva de verdad (antes solo aplicaba a formularios y navegación).
+
+### Pendiente
+
+Día, Mes, Línea de tiempo (en ese orden) — cada una reutilizando `BookingBlock`,
+`calendar-nav.ts` y `grid-math.ts` ya construidos aquí.

@@ -11,19 +11,22 @@
 >
 > **Antes de repetir un error ya conocido:** [`../../DocumentacionProyecto/Bridge/`](../../DocumentacionProyecto/Bridge/).
 
-Última actualización: **2026-09-11** (confirmación visual de la Fase 5a recibida — Fase 5b desbloqueada)
+Última actualización: **2026-09-11** (Fase 5b en construcción — cimientos + Vista de Semana con arrastrar y soltar)
 
 ---
 
 ## 1. Dónde estamos
 
-**Fases 0 a 4 completas y verificadas + Fase 5a + vínculo recurso↔cuenta.** Backend completo
-(motor, identidad, permisos por calendario, API de agenda, colchón entre sucursales, y ahora el
-vínculo opcional recurso↔cuenta que deja a un recurso ver su propia agenda con `GET
-/me/schedule`) y un **frontend real que se autentica de verdad contra esa API** — login de 2 pantallas, sesión por cookies, panel protegido
-con selector de sucursal. **Sin herramienta de navegador en esta sesión** — lo verificable por
-HTTP/build se verificó de verdad; la calidad visual/animación real la confirma el dueño al abrir
-`http://localhost:3061` (mismo criterio ya aplicado en el proyecto `gallery`).
+**Fases 0 a 4 completas y verificadas + Fase 5a + vínculo recurso↔cuenta + Fase 5b en
+construcción.** Backend completo (motor, identidad, permisos por calendario, API de agenda,
+colchón entre sucursales, vínculo opcional recurso↔cuenta) y un **frontend real** — login de 2
+pantallas, sesión por cookies, panel protegido con selector de sucursal, y ahora la **primera
+vista de calendario real con arrastrar y soltar** (Semana). El dueño ya confirmó visualmente la
+Fase 5a el 2026-09-11 ("se ve bien, aún no tiene nada" — exactamente lo esperado de unos
+cimientos); la Vista de Semana que se acaba de construir es la primera pieza que le pone
+contenido real. **Sin herramienta de navegador en esta sesión** — lo verificable por HTTP/build
+se verificó de verdad; la sensación física real del arrastre sigue pendiente de que el dueño la
+pruebe en su navegador.
 
 Estructura real en disco:
 
@@ -33,7 +36,7 @@ Estructura real en disco:
 | `.env.example` / `.env` | ✅ `.env` local con contraseñas de prueba (gitignored) |
 | `omniagenda_core/` | ✅ **v0.2.0** — CommonJS; `ResourceBooking`/`ConflictCandidate` con `calendarId` y `crossCalendarBufferMinutes` (colchón entre calendarios, conflicto DURO). **63 pruebas** `node:test` + `tsx` |
 | `omniagenda_backend/` | ✅ 14 modelos, 5 migraciones; `auth`/`two-factor`/`roles`/`users`/`security-events`/`mail`/`calendar-access` (fail-closed) + `resources`/`calendars`/`schedule-rules`/`time-off`/`bookings` (escritor único)/`availability`/`me` (vínculo recurso↔cuenta, `GET /me/schedule`). **51 pruebas Jest** + `auth-sweep.sh` (27) + `agenda-e2e.sh` (23) + `checks/` de Fase 2 |
-| `omniagenda_frontend/` | ✅ **Fase 5a (nuevo)** — Next.js 16.3.1 + React 19.2.4 + Tailwind 4 + CSS propio (`globals.css`: tokens + animaciones `transform`/`opacity`, `prefers-reduced-motion` respetado). `lib/server-fetch.ts` + `lib/client-api.ts` (cliente de API real, 2 mitades) · `proxy.ts` (protección de `/agenda/*`) · `/login` (2 pantallas: credenciales + 2FA si aplica) · `/agenda` (protegido: sesión real + selector de sucursal `?cal=` + próximas reservas reales) · `/estado` (el diagnóstico de la Fase 0, reubicado) · `/` (landing pública mínima) |
+| `omniagenda_frontend/` | ✅ Fase 5a + 🔶 **Fase 5b en construcción** — Next.js 16.3.1 + React 19.2.4 + Tailwind 4 + CSS propio. `lib/server-fetch.ts` + `lib/client-api.ts` (cliente de API real) · `proxy.ts` (protección de `/agenda/*`) · `/login` (2 pantallas) · `/agenda?view=&date=&cal=` (protegido: `ViewSwitcher`+`DateNav` nuevos, estado en la URL) — **Vista de Semana real** (`week-view.tsx`: rejilla por horas, arrastrar-y-soltar con Pointer Events propios + alternativa de teclado real, `PATCH` optimista con reversión ante `409`/`403`), Agenda (formaliza la lista de 5a), Día/Mes/Línea de tiempo pendientes (aviso honesto en la UI, no simuladas) · `lib/calendar-nav.ts` + `lib/grid-math.ts` (aritmética pura, **26 pruebas `node:test`+`tsx`**, primer runner de pruebas del frontend) · `/estado` · `/` |
 
 **Verificación Fase 5a (2026-09-11) — todo lo verificable sin navegador:**
 - `next build` (producción) → compila limpio, TypeScript sin errores, rutas clasificadas
@@ -117,7 +120,30 @@ opcional, uno por par recurso-calendario) · `time_off` (rango de días, `CHECK 
   **`agenda-e2e.sh` 23/23** (+4, `/me/schedule` real), `auth-sweep.sh` 27/27, checks de Fase 2 y
   núcleo (63/63) sin regresión.
 
-**Lo que NO existe todavía (a propósito, por fase):** frontend de login/agenda (Fase 5) · cron /
+**Verificación Fase 5b, 1er incremento (2026-09-11), reinicio limpio TOTAL (`down -v` + `--build`):**
+- Cimientos compartidos: `ViewSwitcher`/`DateNav` (estado en `?view=`/`?date=`, mismo criterio que
+  `?cal=`), `BookingBlock` (chip visual reutilizable), `lib/calendar-nav.ts` + `lib/grid-math.ts`
+  (aritmética pura de calendario/rejilla, con `Intl` en vez de reimportar `@omniagenda/core` — ver
+  `DOCUMENTO_VIVO_ARQUITECTURA.md` §14 el porqué).
+- **Vista de Semana real**, arrastrar-y-soltar con Pointer Events escritos desde cero (nunca HTML5
+  Drag&Drop nativo ni librería): mueve con `transform`, confirma con `PATCH
+  /calendars/:id/bookings/:id`, revierte con `oa-shake` si el backend responde `409`/`403`.
+  Alternativa real de teclado (flechas, mismo camino optimista+PATCH) — no decorativa.
+- **26 pruebas `node:test`+`tsx` nuevas** (primer runner de pruebas del frontend): 10 de
+  `calendar-nav.ts`, 6 de `grid-math.ts` (más las que ya traía el archivo). `tsc --noEmit` y `next
+  build` producción limpios.
+- Con el stack reconstruido desde cero: login real por curl → `GET
+  /agenda?view=week&cal=...&date=2026-12-15` → `200` con la reserva sembrada real dentro de la
+  rejilla y su `aria-label` de accesibilidad presente. `?view=agenda` conserva el comportamiento
+  de la Fase 5a; `?view=day|month|timeline` muestran un aviso honesto de "no construida todavía"
+  en vez de simular una vista que no existe.
+- Sin regresión: núcleo 63/63, backend Jest 51/51, `auth-sweep.sh` 27/27, `agenda-e2e.sh` 23/23,
+  checks SQL de Fase 2.
+- **Sigue sin poder verificarse sin navegador**: la sensación física real del arrastre y que el
+  foco de teclado se vea correctamente — mismo límite de siempre, ahora sobre una superficie
+  interactiva real.
+
+**Lo que NO existe todavía (a propósito, por fase):** Día/Mes/Línea de tiempo de la Fase 5b · cron /
 correo real / `.ics` (Fase 6) · Stripe (Fase 7) · servicios de documentación en el compose
 (Fase 8) · negocio de demostración concreto para la Fase 9. `RESEND_API_KEY` es un placeholder —
 el flujo de correo es real pero no entrega.
@@ -156,12 +182,12 @@ ocurriendo esta vez en el código en lugar de en la documentación. Detalle comp
 
 ## 4. Próximo paso
 
-**Fase 5b — las vistas de calendario reales. Desbloqueada (confirmación visual recibida
-2026-09-11).** Día/semana/mes/agenda/línea de tiempo, con arrastrar y soltar, sobre los cimientos
-que ya deja 5a (`/agenda` protegido, selector de sucursal, cliente de API real). Es la parte que
-de verdad ejercita "animación de grado profesional" (`PLAN_DESARROLLO.md` §9) y la que llena de
-contenido real el panel — 5a solo construyó dónde pararse, y el dueño ya notó exactamente eso
-("aún no tiene nada, funcional pero da información del sistema") al confirmar que 5a se ve bien.
+**Fase 5b — Día, luego Mes, luego Línea de tiempo.** La Vista de Semana (con arrastrar y soltar)
+ya está construida y verificada (ver arriba y `DOCUMENTO_VIVO_ARQUITECTURA.md` §14); Agenda
+formaliza la lista que ya existía en 5a. Faltan Día (reutiliza casi toda la lógica de Semana, una
+sola columna) y Mes (cuadrícula de solo lectura, sin arrastre de precisión horaria) y Línea de
+tiempo (la más distinta: carriles por recurso, no por hora). Cada una se construye y se verifica
+antes de pasar a la siguiente, mismo ritmo que el resto del proyecto.
 
 **Cómo correr lo que ya existe:**
 ```
@@ -175,6 +201,7 @@ docker compose up -d --build           # migra + siembra; frontend :3061 · api 
 # Pruebas y comprobaciones (con el stack arriba):
 docker compose exec -T omniagenda_backend npm test              # 51 pruebas Jest
 docker compose exec -T omniagenda_backend npm run build         # typecheck completo backend
+docker compose exec -T omniagenda_frontend npm test             # 26 pruebas node:test (calendario/rejilla)
 docker compose exec -T omniagenda_frontend sh -lc "NODE_ENV=production npx next build"  # build frontend
 bash omniagenda_backend/test/auth-sweep.sh                       # 27 casos de control de acceso
 bash omniagenda_backend/test/agenda-e2e.sh                       # 23 casos de la API de agenda
@@ -211,6 +238,7 @@ cuatro de esa lista se pueden seguir respondiendo mientras tanto.
 
 | Fecha | Cambio |
 |---|---|
+| 2026-09-11 | **Fase 5b, 1er incremento: cimientos + Vista de Semana con arrastrar y soltar.** Con la Fase 5b desbloqueada, se construyó en orden: `ViewSwitcher`/`DateNav` (vista y fecha viven en `?view=`/`?date=`, mismo criterio que `?cal=`), `BookingBlock` (chip reutilizable) y dos archivos de aritmética pura — `lib/calendar-nav.ts` (fronteras de día/semana/mes conscientes de zona horaria, con `Intl` en vez de reimportar `@omniagenda/core` al frontend) y `lib/grid-math.ts` (convertir un arrastre en píxeles a minutos/columnas). La **Vista de Semana** es la primera vista real: arrastrar-y-soltar con **Pointer Events escritos desde cero** (nunca el HTML5 Drag&Drop nativo, sin "sensación física", ni ninguna librería) — mueve con `transform`, confirma con `PATCH /calendars/:id/bookings/:id`, y **revierte con la animación `oa-shake`** si el backend responde un conflicto real (409) o sin permiso (403): el backend sigue siendo la única fuente de verdad. Incluye una **alternativa real de teclado** (flechas, mismo camino optimista+PATCH — WCAG 2.1, no decorativa); un hallazgo real durante la construcción: envolver el bloque en OTRO `div` sin posición propia habría dejado el foco de teclado en un elemento invisible (los punteros seguirían funcionando por *bubbling*, el teclado no) — corregido pasando los manejadores directo al elemento con tamaño real. El frontend gana su **primer runner de pruebas** (`node:test`+`tsx`, igual que el núcleo): **26 pruebas** nuevas. Agenda formaliza la lista que ya existía en 5a; Día/Mes/Línea de tiempo muestran un aviso honesto de "no construida todavía" en la propia UI, nunca una vista simulada. **Verificado con reinicio limpio TOTAL**: `tsc`/`next build` limpios, login real por curl → la reserva sembrada real dentro de la rejilla con su `aria-label`, sin regresión en núcleo (63/63), Jest backend (51/51), `auth-sweep.sh` (27/27) ni `agenda-e2e.sh` (23/23). Documentado en `DOCUMENTO_VIVO_ARQUITECTURA.md` §14. **Sigue pendiente sin navegador**: la sensación física real del arrastre. |
 | 2026-09-11 | **Confirmación visual de la Fase 5a recibida — Fase 5b desbloqueada.** El dueño abrió `http://localhost:3061` y confirmó: "se ve bien" — pero con una precisión importante: "aún creo que no tiene nada, funcional pero da información del sistema y permite entrar a la zona admin". Esa observación es correcta y esperada: la Fase 5a era deliberadamente solo cimientos (sesión real, panel protegido, selector de sucursal), nunca el producto — la falta de contenido sustantivo es exactamente el trabajo que le toca a la Fase 5b (las 5 vistas de calendario + arrastrar y soltar), no un defecto de lo construido. Con esta confirmación, el único bloqueo pendiente para la Fase 5b queda cerrado. |
 | 2026-09-11 | **Vínculo opcional recurso↔cuenta (`resources.user_id`) + `GET /me/schedule` — construido y verificado en vivo.** Surgió de una pregunta directa del dueño al ver el login real de la Fase 5a: "¿y habría rol para el estilista?". La respuesta correcta no es un rol nuevo (RBAC contesta "qué puede hacer esta cuenta", no "qué recurso ES esta cuenta") sino un vínculo 1-a-1 opcional, **ortogonal al RBAC** — generaliza `artists.user_id` de Espiral, sin nombre de negocio. `resources.user_id String? @unique @db.Uuid` con `onDelete: SetNull` (migración `20260911141304_link_resource_to_user_account`): borrar la cuenta de login nunca borra el recurso ni su historial. `PATCH /resources/:id { user_id }` (mismo endpoint que ya editaba el recurso, sin ruta nueva) valida cuenta inexistente (404) y cuenta ya vinculada a otro recurso (409, vía el `@unique` de Postgres traducido del `P2002`); `user_id: null` desvincula. Módulo nuevo `me/` — `GET /me/schedule` sin `@Roles`/`@CalendarRole`: cualquier cuenta autenticada pregunta por SU PROPIA agenda, ancorada siempre en `caller.userId` del JWT (cero riesgo de IDOR, ningún id de ruta manipulable), cruzando TODOS los calendarios donde el recurso vinculado trabaja — un estilista de 2 sucursales ve su agenda combinada sin necesitar membresía manual en ninguna; sin vínculo → 404 con mensaje claro, nunca una lista vacía disfrazada. Seed: 7ª cuenta de prueba `estilista+omniagenda@example.com` (rol `usuario` a propósito), vinculada al recurso estilista sembrado. **Verificado con reinicio limpio TOTAL** (`down -v` + `--build`): migración desde cero, seed idempotente, login real como estilista → agenda combinada real; login como `usuario` sin vínculo → 404; conflicto/404/desvincular/re-vincular por `PATCH` — todos correctos por curl. **51/51 pruebas Jest** (+8: `resources.service.test.ts`, `me.service.test.ts` nuevos), **`agenda-e2e.sh` 23/23** (+4), `auth-sweep.sh` 27/27, checks de Fase 2 y núcleo (63/63) sin regresión. Documentado en `DOCUMENTO_VIVO_ARQUITECTURA.md` §13. **Fase 5b sigue bloqueada** — este trabajo es backend puro, no toca el frontend ni resuelve la confirmación visual pendiente. |
 | 2026-09-11 | **Fase 5a (cimientos de interfaz) — construida y verificada, con un límite explícito.** Primer código real de `omniagenda_frontend` desde la Fase 0. `lib/server-fetch.ts` (Server Components, reenvía cookies httpOnly hacia `INTERNAL_API_URL`, un 401 real es la única fuente de verdad de "no hay sesión") + `lib/client-api.ts` (Client Components, habla al backend por `NEXT_PUBLIC_API_URL` con `credentials:'include'`) — dos mitades del cliente de API, escritas desde cero. `proxy.ts` (Next 16 renombró `middleware.ts`): protege `/agenda/*`, saca de `/login` a quien ya tiene sesión — chequeo optimista de cookie, la autorización real la sigue haciendo el backend. `/login`: 2 pantallas reales (credenciales → 2FA solo si `requiresTwoFactor:true`, el formulario reacciona a la API). `/agenda`: protegido, trae `/auth/me` + `/calendars` reales, `BranchSwitcher` (`?cal=` en la URL, nunca solo estado de React — el vertical es multisucursal) y lista las reservas reales de los próximos 7 días. `/estado` (el diagnóstico de la Fase 0, reubicado) y `/` (landing pública mínima) nuevos. **Lenguaje visual propio en `globals.css`**: tokens de color/duración/easing, 3 animaciones (`oa-rise-in`/`oa-shake`/`oa-spin`) solo con `transform`/`opacity`, todas con versión sin movimiento bajo `prefers-reduced-motion` — cero librería de animación, cero código de terceros. **Un dato real de por qué esto funciona**: backend y frontend comparten el hostname `localhost` en dev — las cookies ignoran el puerto, así que una cookie que puso el backend en `:3060` viaja igual cuando el navegador visita `:3061`; verificado con curl usando el mismo cookie-jar contra los dos puertos. **Límite declarado explícito**: sin herramienta de navegador en esta sesión — no se verificó la calidad visual/animación real ni que el DOM del paso de 2FA se revele bien (mismo criterio ya aplicado en `gallery`). **Verificado (todo lo que SÍ se puede sin navegador)**: `next build` producción compila limpio (0 errores TS, rutas clasificadas correctamente); `GET /agenda` sin cookie → 307 a `/login`; login real por curl (cuenta sembrada) contra el backend → esas cookies contra el frontend → `GET /agenda` → 200 con la cuenta real, las 2 sucursales reales y las reservas reales en el HTML; `GET /login` con sesión → 307 a `/agenda`; `POST /auth/logout` real → `/agenda` vuelve a bloquear. **Pendiente: Fase 5b** (las 5 vistas de calendario + arrastrar y soltar) — bloqueada hasta que el dueño confirme visualmente que 5a se ve y se siente bien. |

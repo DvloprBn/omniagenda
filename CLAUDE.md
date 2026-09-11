@@ -11,8 +11,9 @@
 > opcional recurso↔cuenta (`resources.user_id`) + `GET /me/schedule` hecho (2026-09-11)** — ver
 > §13, trabajo de backend puro. **Confirmación visual de la Fase 5a recibida (2026-09-11):** el
 > dueño confirmó que se ve bien, señalando correctamente que "aún no tiene nada" de contenido
-> real — exactamente lo esperado de unos cimientos. **Fase 5b (las 5 vistas de calendario +
-> arrastrar y soltar) queda desbloqueada.**
+> real — exactamente lo esperado de unos cimientos. **Fase 5b en construcción, una vista a la
+> vez: Vista de Semana (rejilla + arrastrar-y-soltar real) hecha (2026-09-11)** — ver §14; faltan
+> Día, Mes y Línea de tiempo.
 
 **Motor de agenda replicable + aplicación real que lo demuestra.** El núcleo (`omniagenda_core`)
 es lo que después sirve de base para construir agendas de negocio reales: reservación de
