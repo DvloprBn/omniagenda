@@ -617,11 +617,20 @@ entrante) encuentre la sesión real sin ningún paso extra. Mismo patrón que ya
   correctamente en el DOM tras la respuesta del paso 2 (la lógica de React se revisó a mano, no
   se ejecutó), y toda la calidad visual/animación real.
 
-### Pendiente — Fase 5b
+### Confirmación visual del dueño (2026-09-11) — el límite anterior queda cerrado
+
+El dueño abrió `http://localhost:3061` y confirmó: **"se ve bien"**. Con una observación
+correcta y esperada: **"aún creo que no tiene nada, funcional pero da información del sistema y
+permite entrar a la zona admin"**. Eso es exactamente lo que la Fase 5a debía ser — cimientos
+(sesión real, panel protegido, selector de sucursal), nunca el producto real. La falta de
+contenido sustantivo que el dueño notó es el trabajo que le toca a la Fase 5b, no un defecto de
+lo ya construido. Con esta confirmación, **la Fase 5b queda desbloqueada**.
+
+### Pendiente — Fase 5b (desbloqueada)
 
 Las 5 vistas de calendario (día/semana/mes/agenda/línea de tiempo) + arrastrar y soltar. Esta es
-la parte que de verdad demuestra "animación de grado profesional" — 5a solo construyó el piso
-sobre el que se para.
+la parte que de verdad demuestra "animación de grado profesional" y la que llena de contenido
+real el panel — 5a solo construyó el piso sobre el que se para.
 
 ---
 

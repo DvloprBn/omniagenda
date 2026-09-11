@@ -11,7 +11,7 @@
 >
 > **Antes de repetir un error ya conocido:** [`../../DocumentacionProyecto/Bridge/`](../../DocumentacionProyecto/Bridge/).
 
-Última actualización: **2026-09-11** (vínculo recurso↔cuenta — `resources.user_id`, `GET /me/schedule`)
+Última actualización: **2026-09-11** (confirmación visual de la Fase 5a recibida — Fase 5b desbloqueada)
 
 ---
 
@@ -156,11 +156,12 @@ ocurriendo esta vez en el código en lugar de en la documentación. Detalle comp
 
 ## 4. Próximo paso
 
-**Fase 5b — las vistas de calendario reales.** Día/semana/mes/agenda/línea de tiempo, con
-arrastrar y soltar, sobre los cimientos que ya deja 5a (`/agenda` protegido, selector de
-sucursal, cliente de API real). Es la parte que de verdad ejercita "animación de grado
-profesional" (`PLAN_DESARROLLO.md` §9) — 5a solo construyó dónde pararse. El dueño confirma
-primero, abriendo `http://localhost:3061`, que 5a se ve y se siente bien antes de seguir.
+**Fase 5b — las vistas de calendario reales. Desbloqueada (confirmación visual recibida
+2026-09-11).** Día/semana/mes/agenda/línea de tiempo, con arrastrar y soltar, sobre los cimientos
+que ya deja 5a (`/agenda` protegido, selector de sucursal, cliente de API real). Es la parte que
+de verdad ejercita "animación de grado profesional" (`PLAN_DESARROLLO.md` §9) y la que llena de
+contenido real el panel — 5a solo construyó dónde pararse, y el dueño ya notó exactamente eso
+("aún no tiene nada, funcional pero da información del sistema") al confirmar que 5a se ve bien.
 
 **Cómo correr lo que ya existe:**
 ```
@@ -193,11 +194,16 @@ propia agenda combinada de las 2 sucursales en `GET /me/schedule`.
 
 ## 5. Preguntas abiertas que bloquean algo
 
-**Bloquea la Fase 5b:** que el dueño confirme visualmente (abriendo `http://localhost:3061`) que
-la Fase 5a se ve y se siente bien — sin navegador en esta sesión, esa confirmación no se puede
-fabricar. La pregunta que bloqueaba antes (cuál es el negocio de demostración, pregunta abierta
-#2 de `PLAN_DESARROLLO.md` §11) quedó **cerrada** el 2026-09-11: estética multisucursal. Las
-otras cuatro de esa lista se pueden seguir respondiendo mientras tanto.
+**Bloqueo de la Fase 5b — CERRADO el 2026-09-11.** El dueño abrió `http://localhost:3061` y
+confirmó: "se ve bien". Con una precisión clave, esperada y correcta: "aún creo que no tiene
+nada, funcional pero da información del sistema y permite entrar a la zona admin" — exactamente
+lo que la Fase 5a **debía** ser (cimientos: sesión real, panel protegido, selector de sucursal),
+no todavía el producto real. Esa falta de contenido es el trabajo que le toca a la Fase 5b, no un
+defecto de la 5a. **Fase 5b queda desbloqueada.**
+
+La pregunta que bloqueaba antes de esta (cuál es el negocio de demostración, pregunta abierta #2
+de `PLAN_DESARROLLO.md` §11) quedó **cerrada** el 2026-09-11: estética multisucursal. Las otras
+cuatro de esa lista se pueden seguir respondiendo mientras tanto.
 
 ---
 
@@ -205,6 +211,7 @@ otras cuatro de esa lista se pueden seguir respondiendo mientras tanto.
 
 | Fecha | Cambio |
 |---|---|
+| 2026-09-11 | **Confirmación visual de la Fase 5a recibida — Fase 5b desbloqueada.** El dueño abrió `http://localhost:3061` y confirmó: "se ve bien" — pero con una precisión importante: "aún creo que no tiene nada, funcional pero da información del sistema y permite entrar a la zona admin". Esa observación es correcta y esperada: la Fase 5a era deliberadamente solo cimientos (sesión real, panel protegido, selector de sucursal), nunca el producto — la falta de contenido sustantivo es exactamente el trabajo que le toca a la Fase 5b (las 5 vistas de calendario + arrastrar y soltar), no un defecto de lo construido. Con esta confirmación, el único bloqueo pendiente para la Fase 5b queda cerrado. |
 | 2026-09-11 | **Vínculo opcional recurso↔cuenta (`resources.user_id`) + `GET /me/schedule` — construido y verificado en vivo.** Surgió de una pregunta directa del dueño al ver el login real de la Fase 5a: "¿y habría rol para el estilista?". La respuesta correcta no es un rol nuevo (RBAC contesta "qué puede hacer esta cuenta", no "qué recurso ES esta cuenta") sino un vínculo 1-a-1 opcional, **ortogonal al RBAC** — generaliza `artists.user_id` de Espiral, sin nombre de negocio. `resources.user_id String? @unique @db.Uuid` con `onDelete: SetNull` (migración `20260911141304_link_resource_to_user_account`): borrar la cuenta de login nunca borra el recurso ni su historial. `PATCH /resources/:id { user_id }` (mismo endpoint que ya editaba el recurso, sin ruta nueva) valida cuenta inexistente (404) y cuenta ya vinculada a otro recurso (409, vía el `@unique` de Postgres traducido del `P2002`); `user_id: null` desvincula. Módulo nuevo `me/` — `GET /me/schedule` sin `@Roles`/`@CalendarRole`: cualquier cuenta autenticada pregunta por SU PROPIA agenda, ancorada siempre en `caller.userId` del JWT (cero riesgo de IDOR, ningún id de ruta manipulable), cruzando TODOS los calendarios donde el recurso vinculado trabaja — un estilista de 2 sucursales ve su agenda combinada sin necesitar membresía manual en ninguna; sin vínculo → 404 con mensaje claro, nunca una lista vacía disfrazada. Seed: 7ª cuenta de prueba `estilista+omniagenda@example.com` (rol `usuario` a propósito), vinculada al recurso estilista sembrado. **Verificado con reinicio limpio TOTAL** (`down -v` + `--build`): migración desde cero, seed idempotente, login real como estilista → agenda combinada real; login como `usuario` sin vínculo → 404; conflicto/404/desvincular/re-vincular por `PATCH` — todos correctos por curl. **51/51 pruebas Jest** (+8: `resources.service.test.ts`, `me.service.test.ts` nuevos), **`agenda-e2e.sh` 23/23** (+4), `auth-sweep.sh` 27/27, checks de Fase 2 y núcleo (63/63) sin regresión. Documentado en `DOCUMENTO_VIVO_ARQUITECTURA.md` §13. **Fase 5b sigue bloqueada** — este trabajo es backend puro, no toca el frontend ni resuelve la confirmación visual pendiente. |
 | 2026-09-11 | **Fase 5a (cimientos de interfaz) — construida y verificada, con un límite explícito.** Primer código real de `omniagenda_frontend` desde la Fase 0. `lib/server-fetch.ts` (Server Components, reenvía cookies httpOnly hacia `INTERNAL_API_URL`, un 401 real es la única fuente de verdad de "no hay sesión") + `lib/client-api.ts` (Client Components, habla al backend por `NEXT_PUBLIC_API_URL` con `credentials:'include'`) — dos mitades del cliente de API, escritas desde cero. `proxy.ts` (Next 16 renombró `middleware.ts`): protege `/agenda/*`, saca de `/login` a quien ya tiene sesión — chequeo optimista de cookie, la autorización real la sigue haciendo el backend. `/login`: 2 pantallas reales (credenciales → 2FA solo si `requiresTwoFactor:true`, el formulario reacciona a la API). `/agenda`: protegido, trae `/auth/me` + `/calendars` reales, `BranchSwitcher` (`?cal=` en la URL, nunca solo estado de React — el vertical es multisucursal) y lista las reservas reales de los próximos 7 días. `/estado` (el diagnóstico de la Fase 0, reubicado) y `/` (landing pública mínima) nuevos. **Lenguaje visual propio en `globals.css`**: tokens de color/duración/easing, 3 animaciones (`oa-rise-in`/`oa-shake`/`oa-spin`) solo con `transform`/`opacity`, todas con versión sin movimiento bajo `prefers-reduced-motion` — cero librería de animación, cero código de terceros. **Un dato real de por qué esto funciona**: backend y frontend comparten el hostname `localhost` en dev — las cookies ignoran el puerto, así que una cookie que puso el backend en `:3060` viaja igual cuando el navegador visita `:3061`; verificado con curl usando el mismo cookie-jar contra los dos puertos. **Límite declarado explícito**: sin herramienta de navegador en esta sesión — no se verificó la calidad visual/animación real ni que el DOM del paso de 2FA se revele bien (mismo criterio ya aplicado en `gallery`). **Verificado (todo lo que SÍ se puede sin navegador)**: `next build` producción compila limpio (0 errores TS, rutas clasificadas correctamente); `GET /agenda` sin cookie → 307 a `/login`; login real por curl (cuenta sembrada) contra el backend → esas cookies contra el frontend → `GET /agenda` → 200 con la cuenta real, las 2 sucursales reales y las reservas reales en el HTML; `GET /login` con sesión → 307 a `/agenda`; `POST /auth/logout` real → `/agenda` vuelve a bloquear. **Pendiente: Fase 5b** (las 5 vistas de calendario + arrastrar y soltar) — bloqueada hasta que el dueño confirme visualmente que 5a se ve y se siente bien. |
 | 2026-09-11 | **Negocio de demostración decidido (estética multisucursal) + colchón entre calendarios construido.** El dueño preguntó cuál candidato (restaurante vs. estética, ambos multisucursal) da un caso de estudio más completo. Análisis contra el código real: el restaurante ejercitaría capacidad que la Fase 4 **ya construyó** (multi-recurso, transacción atómica); la estética exige que el motor **crezca** una capacidad nueva — un recurso (estilista) que trabaja en 2 sucursales, con un colchón de traslado entre ellas. **Decisión: estética multisucursal**; restaurante multisucursal queda anotado como caso de estudio futuro, no descartado. Construido en el acto: `resources.calendar_switch_buffer_minutes` (migración `20260911012816`, `CHECK >= 0`) generaliza `artists.location_change_buffer_minutes` de Espiral — a diferencia del colchón general (preferencia, conflicto BLANDO), este es una imposibilidad física y se reporta como conflicto **DURO**. `omniagenda_core`: `ResourceBooking`/`ConflictCandidate` ganaron `calendarId` + `crossCalendarBufferMinutes` (cambio incompatible de tipos → **v0.2.0**). `BookingsService.preflightConflict` calcula el valor efectivo como el máximo entre los recursos de la reserva. Seed actualizado: **2 sucursales** (Centro L–Sáb, Norte mar/jue) con el estilista de demo atendiendo en ambas, colchón de 45 min. **Verificado con reinicio limpio TOTAL**: núcleo **63/63** (+6), Jest **43/43** (+3), `agenda-e2e.sh` **19/19** (+3, contra el seed real: 15 min entre sucursales → 409, 45 min → 201), `auth-sweep.sh` 27/27, checks de Fase 2 verdes. |
