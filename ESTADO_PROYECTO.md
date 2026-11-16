@@ -1,5 +1,7 @@
 # Estado del proyecto — OmniAgenda
 
+> **Remoto (2026-11-16):** `git@github.com:DvloprBn/omniagenda.git` (rama `main`, 16 commits, público como los demás de `dvlopmnt/`). Antes de la primera subida se escaneó toda la historia (sin secretos) y se reescribió para sustituir un dato personal en una prueba (`escape-html.util.test.ts`); los hashes anteriores ya no existen. Copia de seguridad del estado previo: solo en el scratchpad de esa sesión.
+
 > Bitácora día a día. Se actualiza cada vez que se pide o al cerrar un hito. La estrategia y las
 > decisiones que no cambian seguido viven en [`PLAN_DESARROLLO.md`](./PLAN_DESARROLLO.md).
 >
